@@ -87,6 +87,7 @@ class ImageViewer(CameraView):
             self.scene.removeItem(self._boxPlacementPreview)
             self._boxPlacementPreview = None
         self.setCursor(Qt.CursorShape.CrossCursor)
+        self.viewport().setCursor(Qt.CursorShape.CrossCursor)
 
     def _clampScenePoint(self, point: QPointF) -> QPointF:
         scene_rect = self.scene.sceneRect()
@@ -292,6 +293,7 @@ class ImageViewer(CameraView):
             self._boxPlacementMode = False
             self._boxPlacementStart = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
             if rect.width() >= 4 and rect.height() >= 4 and self.boxDrawnCallback:
                 self.boxDrawnCallback(self._boxPlacementName, rect)
             self._boxPlacementName = None
