@@ -257,6 +257,7 @@ class ImageViewer(CameraView):
                 self.setFourCornersForHomography(
                     [(corner.x(), corner.y()) for corner in self.fourCorners]
                 )
+                self.fourCornersAppliedCallback(self.fourCorners)
                 self.fourCornerSelectionMode = False
                 store_data(
                     "scoresight.json",
