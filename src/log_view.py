@@ -50,6 +50,8 @@ class LogViewerDialog(QDialog):
                 subprocess.Popen(["open", path.dirname(log_file_path)])
 
     def update_ui(self):
+        if not path.exists(log_file_path):
+            return
         with open(log_file_path, "r") as log_file:
             lines = log_file.readlines()
             last_1000_lines = lines[-1000:]
