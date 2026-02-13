@@ -50,20 +50,23 @@ class LogViewerDialog(QDialog):
                 subprocess.Popen(["open", path.dirname(log_file_path)])
 
     def update_ui(self):
-        if not path.exists(log_file_path):
-            return
-        with open(log_file_path, "r") as log_file:
-            lines = log_file.readlines()
-            last_1000_lines = lines[-1000:]
-            log_data = "".join(last_1000_lines)
-            if log_data == self.current_log_data:
+        try:
+            if not path.exists(log_file_path):
                 return
-            self.current_log_data = log_data
-            # Update the UI with the log data
-            self.ui.textEdit_log.setPlainText(log_data)
-            if self.ui.checkBox_autoScroll.isChecked():
-                # scroll to the bottom
-                self.ui.textEdit_log.verticalScrollBar().setValue(
-                    self.ui.textEdit_log.verticalScrollBar().maximum()
-                )
-                self.ui.scrollArea.ensureWidgetVisible(self.ui.textEdit_log)
+            with open(log_file_path, "r", errors="replace") as log_file:
+                lines = log_file.readlines()
+                last_1000_lines = lines[-1000:]
+                log_data = "".join(last_1000_lines)
+                if log_data == self.current_log_data:
+                    return
+                self.current_log_data = log_data
+                # Update the UI with the log data
+                self.ui.textEdit_log.setPlainText(log_data)
+                if self.ui.checkBox_autoScroll.isChecked():
+                    # scroll to the bottom
+                    self.ui.textEdit_log.verticalScrollBar().setValue(
+                        self.ui.textEdit_log.verticalScrollBar().maximum()
+                    )
+                    self.ui.scrollArea.ensureWidgetVisible(self.ui.textEdit_log)
+        except OSError:
+            return
