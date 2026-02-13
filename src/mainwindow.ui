@@ -253,16 +253,16 @@
               <number>0</number>
              </property>
              <item>
-              <widget class="QPushButton" name="pushButton_applyTimeBaseline">
+              <widget class="QPushButton" name="pushButton_autoTuneStatus">
                <property name="text">
-                <string>Apply Time Baseline</string>
+                <string>Auto-tune: idle</string>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="pushButton_autoTuneStatus">
+              <widget class="QPushButton" name="pushButton_applyTimeBaseline">
                <property name="text">
-                <string>Auto-tune: idle</string>
+                <string>Reset to Baseline</string>
                </property>
               </widget>
              </item>

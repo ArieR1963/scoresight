@@ -141,15 +141,15 @@ class Ui_MainWindow(object):
         self.horizontalLayout_timeBaseline = QHBoxLayout(self.widget_timeBaseline)
         self.horizontalLayout_timeBaseline.setObjectName(u"horizontalLayout_timeBaseline")
         self.horizontalLayout_timeBaseline.setContentsMargins(0, 0, 0, 0)
-        self.pushButton_applyTimeBaseline = QPushButton(self.widget_timeBaseline)
-        self.pushButton_applyTimeBaseline.setObjectName(u"pushButton_applyTimeBaseline")
-
-        self.horizontalLayout_timeBaseline.addWidget(self.pushButton_applyTimeBaseline)
-
         self.pushButton_autoTuneStatus = QPushButton(self.widget_timeBaseline)
         self.pushButton_autoTuneStatus.setObjectName(u"pushButton_autoTuneStatus")
 
         self.horizontalLayout_timeBaseline.addWidget(self.pushButton_autoTuneStatus)
+
+        self.pushButton_applyTimeBaseline = QPushButton(self.widget_timeBaseline)
+        self.pushButton_applyTimeBaseline.setObjectName(u"pushButton_applyTimeBaseline")
+
+        self.horizontalLayout_timeBaseline.addWidget(self.pushButton_applyTimeBaseline)
 
         self.horizontalSpacer_timeBaseline = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
@@ -1266,8 +1266,8 @@ class Ui_MainWindow(object):
         self.toolButton_removeBox.setText(QCoreApplication.translate("MainWindow", u"-", None))
         self.pushButton_makeBox.setText(QCoreApplication.translate("MainWindow", u"Add to Scene ->", None))
         self.pushButton_removeBox.setText(QCoreApplication.translate("MainWindow", u"Remove Selected", None))
-        self.pushButton_applyTimeBaseline.setText(QCoreApplication.translate("MainWindow", u"Apply Time Baseline", None))
         self.pushButton_autoTuneStatus.setText(QCoreApplication.translate("MainWindow", u"Auto-tune: idle", None))
+        self.pushButton_applyTimeBaseline.setText(QCoreApplication.translate("MainWindow", u"Reset to Baseline", None))
         self.pushButton_restoreDefaults.setText(QCoreApplication.translate("MainWindow", u"Defaults", None))
         self.checkBox_smoothing.setText(QCoreApplication.translate("MainWindow", u"Average Output", None))
         self.label_binarizationMethod.setText(QCoreApplication.translate("MainWindow", u"Binarize", None))
@@ -1450,4 +1450,3 @@ class Ui_MainWindow(object):
         self.toolButton_speed.setText(QCoreApplication.translate("MainWindow", u"x1", None))
         self.label_12.setText(QCoreApplication.translate("MainWindow", u"### Open a Camera or Load a File", None))
     # retranslateUi
-
