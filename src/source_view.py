@@ -1,4 +1,5 @@
 import math
+from typing import Callable
 from PySide6.QtCore import QPointF, Qt, QTimer, QRectF
 from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPen, QPolygonF
 from PySide6.QtWidgets import (
@@ -48,7 +49,7 @@ class ImageViewer(CameraView):
         fourCornersAppliedCallback: callable,
         detectionTargetsStorage: TextDetectionTargetMemoryStorage | None,
         itemSelectedCallback: callable,
-        boxDrawnCallback: callable | None = None,
+        boxDrawnCallback: Callable | None = None,
     ):
         super().__init__(camera_index, detectionTargetsStorage)
         self.setMouseTracking(True)
