@@ -992,6 +992,7 @@ class MainWindow(QMainWindow):
             self.fourCornersApplied,
             self.detectionTargetsStorage,
             self.itemSelected,
+            self.boxPlacementFinished,
         )
         self.ui.toolButton_videoSettings.setEnabled(
             camera_info.type == CameraInfo.CameraType.OPENCV
@@ -1230,26 +1231,45 @@ class MainWindow(QMainWindow):
         item = self.ui.tableWidget_boxes.currentItem()
         if not item:
             return
-        # create a new box on self.image_viewer with the name of the selected item from the tableWidget_boxes
-        # change the list icon to green checkmark
+        if item.column() != 0:
+            item = self.ui.tableWidget_boxes.item(item.row(), 0)
+        if not self.image_viewer:
+            self._set_auto_tune_status("select source")
+            return
+        self.image_viewer.beginBoxPlacement(item.text())
+        self._set_auto_tune_status(f"draw {item.text()}")
+
+    def boxPlacementFinished(self, item_name, rect):
+        items = self.ui.tableWidget_boxes.findItems(item_name, Qt.MatchFlag.MatchExactly)
+        if len(items) == 0:
+            return
+        item = items[0]
         item.setIcon(QIcon(resource_path("icons/circle-check.svg")))
         item.setData(Qt.ItemDataRole.UserRole, "checked")
+        self.ui.tableWidget_boxes.setCurrentItem(item)
         self.listItemClicked(item)
 
-        # get the size of the box from the name
-        info = default_info_for_box_name(item.text())
-
-        self.detectionTargetsStorage.add_item(
-            TextDetectionTarget(
-                info["x"],
-                info["y"],
-                info["width"],
-                info["height"],
-                item.text(),
-                normalize_settings_dict({}, info),
+        info = default_info_for_box_name(item_name)
+        existing_item = self.detectionTargetsStorage.find_item_by_name(item_name)
+        if existing_item is None:
+            self.detectionTargetsStorage.add_item(
+                TextDetectionTarget(
+                    rect.x(),
+                    rect.y(),
+                    rect.width(),
+                    rect.height(),
+                    item_name,
+                    normalize_settings_dict({}, info),
+                )
             )
-        )
-        self._auto_tune_start(item.text())
+        else:
+            existing_item.setX(rect.x())
+            existing_item.setY(rect.y())
+            existing_item.setWidth(rect.width())
+            existing_item.setHeight(rect.height())
+            self.detectionTargetsStorage.edit_item(item_name, existing_item)
+
+        self._auto_tune_start(item_name)
 
     def removeBox(self):
         item = self.ui.tableWidget_boxes.currentItem()

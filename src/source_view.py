@@ -48,6 +48,7 @@ class ImageViewer(CameraView):
         fourCornersAppliedCallback: callable,
         detectionTargetsStorage: TextDetectionTargetMemoryStorage | None,
         itemSelectedCallback: callable,
+        boxDrawnCallback: callable | None = None,
     ):
         super().__init__(camera_index, detectionTargetsStorage)
         self.setMouseTracking(True)
@@ -56,6 +57,7 @@ class ImageViewer(CameraView):
         self.fourCornerPolygon = None
         self.fourCornersAppliedCallback = fourCornersAppliedCallback
         self.itemSelectedCallback = itemSelectedCallback
+        self.boxDrawnCallback = boxDrawnCallback
         self.first_frame_received_signal.connect(self.detectionTargetsChanged)
         self.detectionTargetsStorage.data_changed.connect(self.detectionTargetsChanged)
         self.timerThread.ocr_result_signal.connect(self.ocrResult)
@@ -66,11 +68,30 @@ class ImageViewer(CameraView):
         self._isScaling = False
         self._isPanning = False
         self._lastMousePosition = QPointF()
+        self._boxPlacementMode = False
+        self._boxPlacementName = None
+        self._boxPlacementStart = None
+        self._boxPlacementPreview = None
 
         self.boxDisplayStyleSetting: int = fetch_data(
             "scoresight.json", "box_display_style", 3
         )
         subscribe_to_data("scoresight.json", "box_display_style", self.boxDisplayStyle)
+
+    def beginBoxPlacement(self, name: str):
+        self._boxPlacementMode = True
+        self._boxPlacementName = name
+        self._boxPlacementStart = None
+        if self._boxPlacementPreview is not None:
+            self.scene.removeItem(self._boxPlacementPreview)
+            self._boxPlacementPreview = None
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def _clampScenePoint(self, point: QPointF) -> QPointF:
+        scene_rect = self.scene.sceneRect()
+        x = min(max(point.x(), scene_rect.left()), scene_rect.right())
+        y = min(max(point.y(), scene_rect.top()), scene_rect.bottom())
+        return QPointF(x, y)
 
     def resizeEvent(self, event):
         if self._isScaling:
@@ -190,6 +211,24 @@ class ImageViewer(CameraView):
             self._lastMousePosition = event.position()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         elif (
+            self._boxPlacementMode
+            and event.button() == Qt.MouseButton.LeftButton
+            and not self.fourCornerSelectionMode
+        ):
+            self._boxPlacementStart = self._clampScenePoint(self.mapToScene(event.pos()))
+            if self._boxPlacementPreview is not None:
+                self.scene.removeItem(self._boxPlacementPreview)
+            self._boxPlacementPreview = QGraphicsRectItem()
+            self._boxPlacementPreview.setPen(QPen(QColor("cyan"), 2))
+            self._boxPlacementPreview.setBrush(
+                QBrush(QColor(0, 255, 255, 35), Qt.BrushStyle.SolidPattern)
+            )
+            self._boxPlacementPreview.setZValue(3)
+            self._boxPlacementPreview.setRect(
+                QRectF(self._boxPlacementStart, self._boxPlacementStart).normalized()
+            )
+            self.scene.addItem(self._boxPlacementPreview)
+        elif (
             self.fourCornerSelectionMode and event.button() == Qt.MouseButton.LeftButton
         ):
             # in four corner mode we want to add a point to the scene
@@ -239,6 +278,22 @@ class ImageViewer(CameraView):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._isPanning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
+        elif (
+            self._boxPlacementMode
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._boxPlacementStart is not None
+        ):
+            end_point = self._clampScenePoint(self.mapToScene(event.pos()))
+            rect = QRectF(self._boxPlacementStart, end_point).normalized()
+            if self._boxPlacementPreview is not None:
+                self.scene.removeItem(self._boxPlacementPreview)
+                self._boxPlacementPreview = None
+            self._boxPlacementMode = False
+            self._boxPlacementStart = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            if rect.width() >= 4 and rect.height() >= 4 and self.boxDrawnCallback:
+                self.boxDrawnCallback(self._boxPlacementName, rect)
+            self._boxPlacementName = None
         else:
             super().mouseReleaseEvent(event)
             self.detectionTargetsStorage.saveBoxesToStorage()
@@ -253,6 +308,12 @@ class ImageViewer(CameraView):
             self.verticalScrollBar().setValue(
                 self.verticalScrollBar().value() - delta.y()
             )
+        elif self._boxPlacementMode and self._boxPlacementStart is not None:
+            current_point = self._clampScenePoint(self.mapToScene(event.pos()))
+            if self._boxPlacementPreview is not None:
+                self._boxPlacementPreview.setRect(
+                    QRectF(self._boxPlacementStart, current_point).normalized()
+                )
         else:
             super().mouseMoveEvent(event)
 
