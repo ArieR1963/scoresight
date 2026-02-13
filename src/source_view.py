@@ -11,6 +11,7 @@ from camera_info import CameraInfo
 from camera_view import CameraView
 from storage import (
     TextDetectionTargetMemoryStorage,
+    fetch_data,
     remove_data,
     store_data,
     subscribe_to_data,
