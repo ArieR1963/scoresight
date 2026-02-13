@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         logger.info("Starting ScoreSight")
         self.ui.setupUi(self)
         self.auto_tune_states = {}
+        self._auto_enable_binary_after_four_corners = False
         self._set_auto_tune_status("idle")
         self.ui.pushButton_autoTuneStatus.clicked.connect(self.rerunAutoTuneSelected)
         self.translator = translator
@@ -925,6 +926,24 @@ class MainWindow(QMainWindow):
     def fourCornersApplied(self, corners):
         # check the button
         self.ui.pushButton_fourCorner.setChecked(True)
+        self._auto_enable_binary_after_four_corners = True
+        self._maybeEnableBinaryPreviewAfterFourCorners()
+
+    def _setBinaryPreview(self, enabled: bool):
+        if not self.image_viewer or not self.image_viewer.timerThread:
+            return
+        current = self.image_viewer.timerThread.show_binary
+        if current != enabled:
+            self.image_viewer.toggleBinary()
+        self.ui.pushButton_binary.setChecked(enabled)
+
+    def _maybeEnableBinaryPreviewAfterFourCorners(self):
+        if not self._auto_enable_binary_after_four_corners:
+            return
+        if not self.image_viewer or not self.image_viewer.timerThread:
+            return
+        self._setBinaryPreview(True)
+        self._auto_enable_binary_after_four_corners = False
 
     def sourceSelectionSucessful(self):
         if self.ui.comboBox_camera_source.currentIndex() == 0:
@@ -1027,6 +1046,7 @@ class MainWindow(QMainWindow):
 
         # load the boxes from scoresight.json
         self.detectionTargetsStorage.loadBoxesFromStorage()
+        self._maybeEnableBinaryPreviewAfterFourCorners()
         self.updateError(None)
 
     def updateError(self, error):
