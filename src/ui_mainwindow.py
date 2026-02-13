@@ -1074,17 +1074,17 @@ class Ui_MainWindow(object):
         self.horizontalLayout_10.setSpacing(3)
         self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.horizontalLayout_10.setContentsMargins(0, 0, 0, 3)
-        self.pushButton_binary = QToolButton(self.widget_viewTools)
-        self.pushButton_binary.setObjectName(u"pushButton_binary")
-        self.pushButton_binary.setCheckable(True)
-
-        self.horizontalLayout_10.addWidget(self.pushButton_binary)
-
         self.pushButton_fourCorner = QToolButton(self.widget_viewTools)
         self.pushButton_fourCorner.setObjectName(u"pushButton_fourCorner")
         self.pushButton_fourCorner.setCheckable(True)
 
         self.horizontalLayout_10.addWidget(self.pushButton_fourCorner)
+
+        self.pushButton_binary = QToolButton(self.widget_viewTools)
+        self.pushButton_binary.setObjectName(u"pushButton_binary")
+        self.pushButton_binary.setCheckable(True)
+
+        self.horizontalLayout_10.addWidget(self.pushButton_binary)
 
         self.toolButton_topCrop = QToolButton(self.widget_viewTools)
         self.toolButton_topCrop.setObjectName(u"toolButton_topCrop")

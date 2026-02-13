@@ -2091,9 +2091,9 @@
            <number>3</number>
           </property>
           <item>
-           <widget class="QToolButton" name="pushButton_binary">
+           <widget class="QToolButton" name="pushButton_fourCorner">
             <property name="text">
-             <string>Binary View</string>
+             <string>4-corner Correction</string>
             </property>
             <property name="checkable">
              <bool>true</bool>
@@ -2101,9 +2101,9 @@
            </widget>
           </item>
           <item>
-           <widget class="QToolButton" name="pushButton_fourCorner">
+           <widget class="QToolButton" name="pushButton_binary">
             <property name="text">
-             <string>4-corner Correction</string>
+             <string>Binary View</string>
             </property>
             <property name="checkable">
              <bool>true</bool>

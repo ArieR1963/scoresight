@@ -945,11 +945,31 @@ class MainWindow(QMainWindow):
         self._setBinaryPreview(True)
         self._auto_enable_binary_after_four_corners = False
 
+    def _resetActiveFieldStateForNewSource(self):
+        self.auto_tune_states.clear()
+        self._set_auto_tune_status("idle")
+        self._auto_enable_binary_after_four_corners = False
+        self.detectionTargetsStorage.clear()
+        self.ui.pushButton_binary.setChecked(False)
+        self.ui.pushButton_fourCorner.setChecked(False)
+        self.ui.tableWidget_boxes.clearSelection()
+        for row in range(self.ui.tableWidget_boxes.rowCount()):
+            item = self.ui.tableWidget_boxes.item(row, 0)
+            if item is None:
+                continue
+            item.setIcon(QIcon(resource_path("icons", "circle-x.svg")))
+            item.setData(Qt.ItemDataRole.UserRole, "unchecked")
+            value_item = self.ui.tableWidget_boxes.item(row, 1)
+            if value_item is not None:
+                value_item.setText("")
+
     def sourceSelectionSucessful(self):
         if self.ui.comboBox_camera_source.currentIndex() == 0:
             return
 
         self.ui.frame_source_view.setEnabled(False)
+        self._resetActiveFieldStateForNewSource()
+        remove_data("scoresight.json", "four_corners")
 
         if self.ui.comboBox_camera_source.currentIndex() == 1:
             if self.source_name is None or not path.exists(self.source_name):
@@ -1044,8 +1064,6 @@ class MainWindow(QMainWindow):
         self.ui.widget_viewTools.setEnabled(True)
         self.ui.widget_cropPanel.setEnabled(True)
 
-        # load the boxes from scoresight.json
-        self.detectionTargetsStorage.loadBoxesFromStorage()
         self._maybeEnableBinaryPreviewAfterFourCorners()
         self.updateError(None)
 

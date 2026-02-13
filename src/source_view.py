@@ -11,7 +11,6 @@ from camera_info import CameraInfo
 from camera_view import CameraView
 from storage import (
     TextDetectionTargetMemoryStorage,
-    fetch_data,
     remove_data,
     store_data,
     subscribe_to_data,
@@ -63,9 +62,6 @@ class ImageViewer(CameraView):
         self.detectionTargetsStorage.data_changed.connect(self.detectionTargetsChanged)
         self.timerThread.ocr_result_signal.connect(self.ocrResult)
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, False)
-        if fetch_data("scoresight.json", "four_corners"):
-            self.setFourCorners(fetch_data("scoresight.json", "four_corners"))
-            self.fourCornersAppliedCallback(self.fourCorners)
         self._isScaling = False
         self._isPanning = False
         self._lastMousePosition = QPointF()
