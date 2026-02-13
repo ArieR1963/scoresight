@@ -164,9 +164,7 @@ class CameraView(QGraphicsView):
     def closeEvent(self, event):
         logger.debug("Close")
         if self.timerThread is not None:
-            # Stop the timer thread
-            self.timerThread.should_stop = True
-            self.timerThread.wait()
+            self.timerThread.stop()
             self.timerThread = None
 
         # Call the base class closeEvent method
@@ -175,6 +173,5 @@ class CameraView(QGraphicsView):
     # on destroy, stop the timer
     def __del__(self):
         if self.timerThread is not None:
-            self.timerThread.should_stop = True
-            self.timerThread.wait()
+            self.timerThread.stop()
             self.timerThread = None

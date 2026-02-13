@@ -459,11 +459,31 @@ class TimerThread(QThread):
         if time_diff_ms < self.frame_interval:
             time.sleep((self.frame_interval - time_diff_ms) / 1000.0)
 
+    def stop(self, timeout_ms: int = 2000):
+        self.should_stop = True
+        if self.video_capture is not None:
+            try:
+                self.video_capture.release()
+            except Exception:
+                pass
+        if self.wait(timeout_ms):
+            return
+        logger.warning("Camera thread did not stop within %d ms; forcing stop", timeout_ms)
+        self.requestInterruption()
+        if self.video_capture is not None:
+            try:
+                self.video_capture.release()
+            except Exception:
+                pass
+        if self.wait(750):
+            return
+        self.terminate()
+        self.wait(750)
+
     # on destroy, stop the timer
     def __del__(self):
         logger.info("Stopping camera")
-        self.should_stop = True
-        self.wait()
+        self.stop()
 
     def toggleStabilization(self, state):
         self.stabilizationEnabled = state
