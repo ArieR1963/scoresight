@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Time",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 170,
+      "height": 100
+    },
+    "settings": {
+      "is_custom": false,
+      "obs_source_name": "Clock",
+      "format_regex": "^(?:(?:[0-5]?\\d:[0-5]\\d(?:\\.\\d)?)|(?:[0-5]?\\d\\.\\d))$",
+      "type": 1,
+      "smoothing": false,
+      "skip_empty": true,
+      "conf_thresh": 0.5,
+      "cleanup_thresh": 0.0,
+      "dilate": 1,
+      "skew": 2,
+      "vscale": 10,
+      "autocrop": false,
+      "skip_similar_image": false,
+      "remove_leading_zeros": false,
+      "rescale_patch": true,
+      "normalize_wh_ratio": false,
+      "invert_patch": false,
+      "dot_detector": false,
+      "binarization_method": 2,
+      "ordinal_indicator": false,
+      "templatefield": false,
+      "templatefield_text": "",
+      "composite_box": false
+    },
+    "mini_rects": []
+  }
+]

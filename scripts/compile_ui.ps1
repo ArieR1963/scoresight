@@ -1,0 +1,8 @@
+Get-ChildItem -Filter src/*.ui | ForEach-Object {
+    $uiFile = $_.FullName
+    $pyFile = [System.IO.Path]::ChangeExtension($uiFile, ".py")
+    # add "ui_" prefix to the file name
+    $pyFile = [System.IO.Path]::Combine($([System.IO.Path]::GetDirectoryName($pyFile)), "ui_$([System.IO.Path]::GetFileName($pyFile))")
+    pyside6-uic $uiFile -o $pyFile -p -n --no-qt-namespace --star-imports
+    Write-Host "Processed $UiFile -> $pyFile"
+}
