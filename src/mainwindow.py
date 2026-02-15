@@ -2,6 +2,7 @@ from functools import partial
 import os
 import platform
 import datetime
+import json
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -492,8 +493,10 @@ class MainWindow(QMainWindow):
         )
         if not file:
             return
-        # load the configuration from the file
-        if not self.detectionTargetsStorage.loadBoxesFromFile(file):
+        try:
+            with open(file, "r") as f:
+                config = json.load(f)
+        except Exception:
             # show an error qmessagebox
             logger.error("Error loading configuration file")
             QMessageBox.critical(
@@ -504,6 +507,35 @@ class MainWindow(QMainWindow):
             )
             return
 
+        boxes = config
+        four_corners = None
+        # New format: {"boxes": [...], "four_corners": [[x,y], ...]}
+        if isinstance(config, dict):
+            boxes = config.get("boxes")
+            four_corners = config.get("four_corners")
+
+        if not isinstance(boxes, list) or not self.detectionTargetsStorage.loadBoxesFromDict(boxes):
+            logger.error("Error loading configuration file")
+            QMessageBox.critical(
+                self,
+                "Error",
+                "Error loading configuration file",
+                QMessageBox.StandardButton.Ok,
+            )
+            return
+
+        if isinstance(config, dict):
+            if isinstance(four_corners, list) and len(four_corners) == 4:
+                store_data("scoresight.json", "four_corners", four_corners)
+                if self.image_viewer is not None:
+                    self.image_viewer.setFourCorners(four_corners)
+                    self.fourCornersApplied(four_corners)
+            else:
+                remove_data("scoresight.json", "four_corners")
+                if self.image_viewer is not None:
+                    self.image_viewer.setFourCorners(None)
+                    self.ui.pushButton_fourCorner.setChecked(False)
+
     def exportConfiguration(self):
         # open a file dialog to select the output file
         file, _ = QFileDialog.getSaveFileName(
@@ -511,8 +543,12 @@ class MainWindow(QMainWindow):
         )
         if not file:
             return
-        # save the configuration to the file
-        self.detectionTargetsStorage.saveBoxesToFile(file)
+        config = {
+            "boxes": self.detectionTargetsStorage.getBoxesForStorage(),
+            "four_corners": fetch_data("scoresight.json", "four_corners"),
+        }
+        with open(file, "w") as f:
+            json.dump(config, f, indent=2)
 
     def openOCRTrainingDataDialog(self):
         # open the OCR training data dialog
