@@ -375,6 +375,7 @@ class MainWindow(QMainWindow):
 
         self.ui.toolButton_speed.clicked.connect(self.toggleSpeed)
         self.ui.toolButton_playPauseFile.clicked.connect(self.togglePlaybackPause)
+        self.ui.toolButton_rewindToStartFile.clicked.connect(self.seekPlaybackToStart)
         self.ui.toolButton_rewindFile.clicked.connect(
             lambda: self.seekPlaybackFrames(-150)
         )
@@ -412,6 +413,7 @@ class MainWindow(QMainWindow):
             self.ui.toolButton_speed.setText(f"x{speed}")
 
     def _setFilePlaybackControls(self, enabled: bool, paused: bool = False):
+        self.ui.toolButton_rewindToStartFile.setEnabled(enabled)
         self.ui.toolButton_rewindFile.setEnabled(enabled)
         self.ui.toolButton_playPauseFile.setEnabled(enabled)
         self.ui.toolButton_forwardFile.setEnabled(enabled)
@@ -431,6 +433,13 @@ class MainWindow(QMainWindow):
         if self.image_viewer.getCameraInfo().type != CameraInfo.CameraType.FILE:
             return
         self.image_viewer.timerThread.seekRelativeFrames(delta_frames)
+
+    def seekPlaybackToStart(self):
+        if not self.image_viewer or not self.image_viewer.timerThread:
+            return
+        if self.image_viewer.getCameraInfo().type != CameraInfo.CameraType.FILE:
+            return
+        self.image_viewer.timerThread.seekToStart()
 
     def saveOCRTrainingData(self):
         self.globalSettingsChanged(

@@ -209,6 +209,7 @@ class TimerThread(QThread):
         self.speed = 1
         self.paused = False
         self.seek_request_frames = 0
+        self.seek_to_start_requested = False
         self.playback_control_lock = threading.Lock()
 
     def getSpeed(self):
@@ -231,6 +232,11 @@ class TimerThread(QThread):
             return
         with self.playback_control_lock:
             self.seek_request_frames += int(delta_frames)
+
+    def seekToStart(self):
+        with self.playback_control_lock:
+            self.seek_to_start_requested = True
+            self.seek_request_frames = 0
 
     def setUpdateFrameInterval(self, cadence):
         self.update_frame_interval = 1000 / cadence
@@ -297,13 +303,21 @@ class TimerThread(QThread):
                 break
             seek_delta = 0
             paused = False
+            seek_to_start = False
             with self.playback_control_lock:
                 paused = self.paused
                 if self.camera_info.type == CameraInfo.CameraType.FILE:
+                    seek_to_start = self.seek_to_start_requested
+                    self.seek_to_start_requested = False
                     seek_delta = self.seek_request_frames
                     self.seek_request_frames = 0
 
-            if seek_delta != 0 and self.camera_info.type == CameraInfo.CameraType.FILE:
+            if seek_to_start and self.camera_info.type == CameraInfo.CameraType.FILE:
+                try:
+                    self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                except Exception:
+                    pass
+            elif seek_delta != 0 and self.camera_info.type == CameraInfo.CameraType.FILE:
                 try:
                     current_frame = int(self.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
                     target_frame = max(0, current_frame + seek_delta)
