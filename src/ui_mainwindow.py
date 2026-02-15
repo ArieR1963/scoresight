@@ -1097,6 +1097,24 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_10.addWidget(self.toolButton_rotate)
 
+        self.toolButton_rewindFile = QToolButton(self.widget_viewTools)
+        self.toolButton_rewindFile.setObjectName(u"toolButton_rewindFile")
+        self.toolButton_rewindFile.setEnabled(False)
+
+        self.horizontalLayout_10.addWidget(self.toolButton_rewindFile)
+
+        self.toolButton_playPauseFile = QToolButton(self.widget_viewTools)
+        self.toolButton_playPauseFile.setObjectName(u"toolButton_playPauseFile")
+        self.toolButton_playPauseFile.setEnabled(False)
+
+        self.horizontalLayout_10.addWidget(self.toolButton_playPauseFile)
+
+        self.toolButton_forwardFile = QToolButton(self.widget_viewTools)
+        self.toolButton_forwardFile.setObjectName(u"toolButton_forwardFile")
+        self.toolButton_forwardFile.setEnabled(False)
+
+        self.horizontalLayout_10.addWidget(self.toolButton_forwardFile)
+
         self.pushButton_stabilize = QToolButton(self.widget_viewTools)
         self.pushButton_stabilize.setObjectName(u"pushButton_stabilize")
         self.pushButton_stabilize.setCheckable(True)
@@ -1423,6 +1441,9 @@ class Ui_MainWindow(object):
 #endif // QT_CONFIG(tooltip)
         self.toolButton_topCrop.setText(QCoreApplication.translate("MainWindow", u"Crop", None))
         self.toolButton_rotate.setText(QCoreApplication.translate("MainWindow", u"Rotate", None))
+        self.toolButton_rewindFile.setText(QCoreApplication.translate("MainWindow", u"<<", None))
+        self.toolButton_playPauseFile.setText(QCoreApplication.translate("MainWindow", u"Pause", None))
+        self.toolButton_forwardFile.setText(QCoreApplication.translate("MainWindow", u">>", None))
         self.pushButton_stabilize.setText(QCoreApplication.translate("MainWindow", u"Stabilize", None))
         self.comboBox_boxDisplayStyle.setItemText(0, QCoreApplication.translate("MainWindow", u"No Box", None))
         self.comboBox_boxDisplayStyle.setItemText(1, QCoreApplication.translate("MainWindow", u"Outline", None))

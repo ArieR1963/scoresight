@@ -207,12 +207,30 @@ class TimerThread(QThread):
         self.updateOnChange = True
         self.crop = FrameCropAndRotation()
         self.speed = 1
+        self.paused = False
+        self.seek_request_frames = 0
+        self.playback_control_lock = threading.Lock()
 
     def getSpeed(self):
         return self.speed
 
     def setSpeed(self, speed):
         self.speed = speed
+
+    def togglePaused(self) -> bool:
+        with self.playback_control_lock:
+            self.paused = not self.paused
+            return self.paused
+
+    def setPaused(self, paused: bool):
+        with self.playback_control_lock:
+            self.paused = paused
+
+    def seekRelativeFrames(self, delta_frames: int):
+        if delta_frames == 0:
+            return
+        with self.playback_control_lock:
+            self.seek_request_frames += int(delta_frames)
 
     def setUpdateFrameInterval(self, cadence):
         self.update_frame_interval = 1000 / cadence
@@ -277,6 +295,25 @@ class TimerThread(QThread):
             if self.video_capture is None:
                 logger.warn("Error: video capture is None")
                 break
+            seek_delta = 0
+            paused = False
+            with self.playback_control_lock:
+                paused = self.paused
+                if self.camera_info.type == CameraInfo.CameraType.FILE:
+                    seek_delta = self.seek_request_frames
+                    self.seek_request_frames = 0
+
+            if seek_delta != 0 and self.camera_info.type == CameraInfo.CameraType.FILE:
+                try:
+                    current_frame = int(self.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                    target_frame = max(0, current_frame + seek_delta)
+                    self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                except Exception:
+                    pass
+
+            if paused and seek_delta == 0:
+                self.sleep_fps_target()
+                continue
 
             if self.retry_count == self.retry_high_water_mark:
                 logger.warn("Error: retry high water mark exceeded")
@@ -310,7 +347,7 @@ class TimerThread(QThread):
                 self.sleep_fps_target()
                 continue
 
-            if self.camera_info.type == CameraInfo.CameraType.FILE:
+            if self.camera_info.type == CameraInfo.CameraType.FILE and not paused:
                 if self.speed != 1:
                     self.video_capture.set(
                         cv2.CAP_PROP_POS_FRAMES,

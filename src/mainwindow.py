@@ -374,6 +374,13 @@ class MainWindow(QMainWindow):
         )
 
         self.ui.toolButton_speed.clicked.connect(self.toggleSpeed)
+        self.ui.toolButton_playPauseFile.clicked.connect(self.togglePlaybackPause)
+        self.ui.toolButton_rewindFile.clicked.connect(
+            lambda: self.seekPlaybackFrames(-150)
+        )
+        self.ui.toolButton_forwardFile.clicked.connect(
+            lambda: self.seekPlaybackFrames(150)
+        )
 
         self.update_sources.connect(self.updateSources)
         self.get_sources.connect(self.getSources)
@@ -403,6 +410,27 @@ class MainWindow(QMainWindow):
                 speed = 1
             self.image_viewer.timerThread.setSpeed(speed)
             self.ui.toolButton_speed.setText(f"x{speed}")
+
+    def _setFilePlaybackControls(self, enabled: bool, paused: bool = False):
+        self.ui.toolButton_rewindFile.setEnabled(enabled)
+        self.ui.toolButton_playPauseFile.setEnabled(enabled)
+        self.ui.toolButton_forwardFile.setEnabled(enabled)
+        self.ui.toolButton_playPauseFile.setText("Play" if paused else "Pause")
+
+    def togglePlaybackPause(self):
+        if not self.image_viewer or not self.image_viewer.timerThread:
+            return
+        if self.image_viewer.getCameraInfo().type != CameraInfo.CameraType.FILE:
+            return
+        paused = self.image_viewer.timerThread.togglePaused()
+        self._setFilePlaybackControls(True, paused)
+
+    def seekPlaybackFrames(self, delta_frames: int):
+        if not self.image_viewer or not self.image_viewer.timerThread:
+            return
+        if self.image_viewer.getCameraInfo().type != CameraInfo.CameraType.FILE:
+            return
+        self.image_viewer.timerThread.seekRelativeFrames(delta_frames)
 
     def saveOCRTrainingData(self):
         self.globalSettingsChanged(
@@ -986,6 +1014,7 @@ class MainWindow(QMainWindow):
         self._set_auto_tune_status("idle")
         self._auto_enable_binary_after_four_corners = False
         self.detectionTargetsStorage.clear()
+        self._setFilePlaybackControls(False)
         self.ui.pushButton_binary.setChecked(False)
         self.ui.pushButton_fourCorner.setChecked(False)
         self.ui.tableWidget_boxes.clearSelection()
@@ -1072,6 +1101,7 @@ class MainWindow(QMainWindow):
         self.ui.toolButton_videoSettings.setEnabled(
             camera_info.type == CameraInfo.CameraType.OPENCV
         )
+        self._setFilePlaybackControls(camera_info.type == CameraInfo.CameraType.FILE)
         self.image_viewer.first_frame_received_signal.connect(
             self.cameraConnectedEnableUI
         )
