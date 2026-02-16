@@ -42,7 +42,7 @@ class BoxSettingsUIHandler:
                 "regex": r"^(?:(?:1\d|2[0-4])|(?:[0-9](?:\.[0-9])?))$",
             },
             {
-                "label": "Korfbal (25)",
+                "label": "Korfball (25)",
                 "max": 25,
                 "regex": r"^(?:0\d|1\d|2[0-5])$",
             },
