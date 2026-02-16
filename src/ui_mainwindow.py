@@ -1300,7 +1300,7 @@ class Ui_MainWindow(object):
         self.comboBox_binarizationMethod.setItemText(2, QCoreApplication.translate("MainWindow", u"Local", None))
         self.comboBox_binarizationMethod.setItemText(3, QCoreApplication.translate("MainWindow", u"Adaptive", None))
 
-        self.comboBox_formatPrefix.setItemText(0, QCoreApplication.translate("MainWindow", u"Time mm:ss.d", None))
+        self.comboBox_formatPrefix.setItemText(0, QCoreApplication.translate("MainWindow", u"Time (mm:ss, ss.d)", None))
         self.comboBox_formatPrefix.setItemText(1, QCoreApplication.translate("MainWindow", u"Time mm:ss", None))
         self.comboBox_formatPrefix.setItemText(2, QCoreApplication.translate("MainWindow", u"Time ss.d", None))
         self.comboBox_formatPrefix.setItemText(3, QCoreApplication.translate("MainWindow", u"Time 0-59", None))

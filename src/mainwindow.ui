@@ -382,7 +382,7 @@
                </property>
                <item>
                 <property name="text">
-                 <string>Time mm:ss.d</string>
+                 <string>Time (mm:ss, ss.d)</string>
                 </property>
                </item>
                <item>
