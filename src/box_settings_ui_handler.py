@@ -56,7 +56,7 @@ class BoxSettingsUIHandler:
         self.spinBox_shotclockMax.setSuffix(" s")
         self.spinBox_shotclockMax.setKeyboardTracking(False)
         self.lineEdit_shotclockFormatInfo = QLineEdit(self.widget_shotclock)
-        self.lineEdit_shotclockFormatInfo.setReadOnly(True)
+        self.lineEdit_shotclockFormatInfo.setReadOnly(False)
         self.lineEdit_shotclockFormatInfo.setMinimumWidth(180)
         self.lineEdit_shotclockFormatInfo.setPlaceholderText("Format")
 
@@ -186,6 +186,14 @@ class BoxSettingsUIHandler:
             with QSignalBlocker(self.comboBox_shotclockPreset):
                 self.comboBox_shotclockPreset.setCurrentIndex(0)
         self._applyShotclockMax(value)
+
+    def shotclockFormatEdited(self, format_regex: str):
+        self.ui.lineEdit_format.setText(format_regex)
+        self.genericSettingsChanged("format_regex", format_regex)
+        # Editing the format manually means we are using a custom setup.
+        if self.comboBox_shotclockPreset is not None:
+            with QSignalBlocker(self.comboBox_shotclockPreset):
+                self.comboBox_shotclockPreset.setCurrentIndex(0)
 
     def editSettings(self, settingsMutatorCallback):
         # update the selected item's settings in the detectionTargetsStorage
@@ -370,6 +378,7 @@ class BoxSettingsUIHandler:
             self.shotclockPresetChanged
         )
         self.spinBox_shotclockMax.valueChanged.connect(self.shotclockMaxChanged)
+        self.lineEdit_shotclockFormatInfo.textChanged.connect(self.shotclockFormatEdited)
 
     def populateSettings(self, name):
         self.ui.lineEdit_format.blockSignals(True)
@@ -428,6 +437,8 @@ class BoxSettingsUIHandler:
                 self.spinBox_shotclockMax.setValue(39)
             if self.comboBox_shotclockPreset is not None:
                 self.comboBox_shotclockPreset.setCurrentIndex(0)
+            if self.lineEdit_shotclockFormatInfo is not None:
+                self.lineEdit_shotclockFormatInfo.setText("")
         else:
             item_obj.settings = normalize_settings_dict(
                 item_obj.settings, default_info_for_box_name(item_obj.name)
