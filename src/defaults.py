@@ -155,6 +155,7 @@ default_boxes = [
         "height": 100,
         "obs_source_name": "shotclock",
         "format_regex": format_prefixes[4],
+        "shotclock_max": 39,
         **NUMBER_BASELINE,
         "ordinal_indicator": False,
         "is_custom": False,
@@ -277,5 +278,8 @@ def normalize_settings_dict(settings, box_info):
         ),
         "composite_box": (
             _setting_or_default(settings, "composite_box", box_info.get("composite_box", False))
+        ),
+        "shotclock_max": (
+            _setting_or_default(settings, "shotclock_max", box_info.get("shotclock_max"))
         ),
     }

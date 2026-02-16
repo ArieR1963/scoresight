@@ -1,6 +1,6 @@
 from functools import partial
 from PySide6.QtCore import QSignalBlocker
-from PySide6.QtWidgets import QSpinBox
+from PySide6.QtWidgets import QSpinBox, QWidget, QLabel, QComboBox, QHBoxLayout
 
 from defaults import (
     default_info_for_box_name,
@@ -17,9 +17,43 @@ class BoxSettingsUIHandler:
     def __init__(self, ui: Ui_MainWindow):
         self.ui = ui
         self.sliderValueInputs = {}
+        self.shotclockPresets = [
+            ("Custom", None),
+            ("Basketball / Waterpolo (24)", 24),
+            ("NCAA Basketball (30)", 30),
+            ("Korfbal (25)", 25),
+            ("Roller Hockey (45)", 45),
+        ]
+        self.widget_shotclock = None
+        self.comboBox_shotclockPreset = None
+        self.spinBox_shotclockMax = None
         self._setupEditableSliderValues()
+        self._setupShotclockControls()
         self.boxSettingsUiSetup()
         self.detectionTargetsStorage = TextDetectionTargetMemoryStorage()
+
+    def _setupShotclockControls(self):
+        self.widget_shotclock = QWidget(self.ui.groupBox_target_settings)
+        layout = QHBoxLayout(self.widget_shotclock)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        label = QLabel("Shotclock Max", self.widget_shotclock)
+        self.comboBox_shotclockPreset = QComboBox(self.widget_shotclock)
+        for text, value in self.shotclockPresets:
+            self.comboBox_shotclockPreset.addItem(text, value)
+        self.spinBox_shotclockMax = QSpinBox(self.widget_shotclock)
+        self.spinBox_shotclockMax.setRange(1, 59)
+        self.spinBox_shotclockMax.setValue(39)
+        self.spinBox_shotclockMax.setSuffix(" s")
+        self.spinBox_shotclockMax.setKeyboardTracking(False)
+
+        layout.addWidget(label)
+        layout.addWidget(self.comboBox_shotclockPreset)
+        layout.addWidget(self.spinBox_shotclockMax)
+
+        self.ui.gridLayout_6.addWidget(self.widget_shotclock, 1, 2, 1, 1)
+        self._setShotclockControlsVisible(False)
 
     def _replaceLabelWithSpinBox(self, label_widget, minimum, maximum, suffix=""):
         container = label_widget.parentWidget()
@@ -79,6 +113,56 @@ class BoxSettingsUIHandler:
                 continue
             slider.valueChanged.connect(spin.setValue)
             spin.valueChanged.connect(slider.setValue)
+
+    def _setShotclockControlsVisible(self, visible: bool):
+        if self.widget_shotclock is None:
+            return
+        self.widget_shotclock.setVisible(visible)
+        self.widget_shotclock.setEnabled(visible)
+
+    def _buildShotclockRegex(self, max_seconds: int) -> str:
+        max_seconds = max(1, min(int(max_seconds), 59))
+        if max_seconds < 10:
+            return f"^0?[0-{max_seconds}]$"
+        tens = max_seconds // 10
+        ones = max_seconds % 10
+        if ones == 9:
+            return f"^[0-{tens}]\\d$"
+        if tens == 0:
+            return f"^0?[0-{ones}]$"
+        return f"^(?:[0-{tens - 1}]\\d|{tens}[0-{ones}])$"
+
+    def _isShotClockTarget(self, item_name: str, item_obj) -> bool:
+        if "shot" in item_name.lower() and "clock" in item_name.lower():
+            return True
+        if item_obj is None or item_obj.settings is None:
+            return False
+        return item_obj.settings.get("shotclock_max") is not None
+
+    def _applyShotclockMax(self, max_seconds: int):
+        max_seconds = int(max_seconds)
+        regex = self._buildShotclockRegex(max_seconds)
+        self.ui.lineEdit_format.setText(regex)
+        self.genericSettingsChanged("format_regex", regex)
+        self.genericSettingsChanged("shotclock_max", max_seconds)
+        self.ui.comboBox_formatPrefix.setCurrentIndex(12)
+
+    def shotclockPresetChanged(self, index: int):
+        if self.comboBox_shotclockPreset is None or self.spinBox_shotclockMax is None:
+            return
+        preset_value = self.comboBox_shotclockPreset.itemData(index)
+        if preset_value is None:
+            return
+        self.spinBox_shotclockMax.setValue(int(preset_value))
+
+    def shotclockMaxChanged(self, value: int):
+        if self.comboBox_shotclockPreset is None:
+            return
+        selected_preset = self.comboBox_shotclockPreset.currentData()
+        if selected_preset is not None and int(selected_preset) != int(value):
+            with QSignalBlocker(self.comboBox_shotclockPreset):
+                self.comboBox_shotclockPreset.setCurrentIndex(0)
+        self._applyShotclockMax(value)
 
     def editSettings(self, settingsMutatorCallback):
         # update the selected item's settings in the detectionTargetsStorage
@@ -259,6 +343,10 @@ class BoxSettingsUIHandler:
         self.ui.comboBox_formatPrefix.currentIndexChanged.connect(
             self.formatPrefixChanged
         )
+        self.comboBox_shotclockPreset.currentIndexChanged.connect(
+            self.shotclockPresetChanged
+        )
+        self.spinBox_shotclockMax.valueChanged.connect(self.shotclockMaxChanged)
 
     def populateSettings(self, name):
         self.ui.lineEdit_format.blockSignals(True)
@@ -282,9 +370,15 @@ class BoxSettingsUIHandler:
         self.ui.checkBox_templatefield.blockSignals(True)
         self.ui.lineEdit_templatefield.blockSignals(True)
         self.ui.checkBox_compositeBox.blockSignals(True)
+        if self.comboBox_shotclockPreset is not None:
+            self.comboBox_shotclockPreset.blockSignals(True)
+        if self.spinBox_shotclockMax is not None:
+            self.spinBox_shotclockMax.blockSignals(True)
 
         # populate the settings from the detectionTargetsStorage
         item_obj = self.detectionTargetsStorage.find_item_by_name(name)
+        is_shotclock_target = self._isShotClockTarget(name, item_obj)
+        self._setShotclockControlsVisible(is_shotclock_target)
         if item_obj is None:
             self.ui.lineEdit_format.setText("")
             self.ui.comboBox_fieldType.setCurrentIndex(0)
@@ -307,6 +401,10 @@ class BoxSettingsUIHandler:
             self.ui.checkBox_templatefield.setChecked(False)
             self.ui.lineEdit_templatefield.setText("")
             self.ui.checkBox_compositeBox.setChecked(False)
+            if self.spinBox_shotclockMax is not None:
+                self.spinBox_shotclockMax.setValue(39)
+            if self.comboBox_shotclockPreset is not None:
+                self.comboBox_shotclockPreset.setCurrentIndex(0)
         else:
             item_obj.settings = normalize_settings_dict(
                 item_obj.settings, default_info_for_box_name(item_obj.name)
@@ -351,6 +449,19 @@ class BoxSettingsUIHandler:
                 item_obj.settings["templatefield_text"]
             )
             self.ui.checkBox_compositeBox.setChecked(item_obj.settings["composite_box"])
+            if is_shotclock_target and self.spinBox_shotclockMax is not None:
+                max_seconds = item_obj.settings.get("shotclock_max")
+                if max_seconds is None:
+                    max_seconds = 39
+                max_seconds = int(max_seconds)
+                self.spinBox_shotclockMax.setValue(max_seconds)
+                preset_index = 0
+                for i in range(self.comboBox_shotclockPreset.count()):
+                    preset_value = self.comboBox_shotclockPreset.itemData(i)
+                    if preset_value is not None and int(preset_value) == max_seconds:
+                        preset_index = i
+                        break
+                self.comboBox_shotclockPreset.setCurrentIndex(preset_index)
 
         self.ui.comboBox_formatPrefix.setCurrentIndex(12)
         self.updateSliderValueLabels()
@@ -376,6 +487,10 @@ class BoxSettingsUIHandler:
         self.ui.checkBox_templatefield.blockSignals(False)
         self.ui.lineEdit_templatefield.blockSignals(False)
         self.ui.checkBox_compositeBox.blockSignals(False)
+        if self.comboBox_shotclockPreset is not None:
+            self.comboBox_shotclockPreset.blockSignals(False)
+        if self.spinBox_shotclockMax is not None:
+            self.spinBox_shotclockMax.blockSignals(False)
 
     def updateSliderValueLabels(self):
         self.ui.label_conf_thresh_value.setText(

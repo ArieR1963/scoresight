@@ -307,6 +307,7 @@ class TextDetectionTargetMemoryStorage(QObject):
                             "templatefield_text"
                         ),
                         "composite_box": detectionTarget.settings.get("composite_box"),
+                        "shotclock_max": detectionTarget.settings.get("shotclock_max"),
                     },
                     "mini_rects": [
                         {
