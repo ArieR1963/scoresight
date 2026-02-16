@@ -1,6 +1,13 @@
 from functools import partial
 from PySide6.QtCore import QSignalBlocker
-from PySide6.QtWidgets import QSpinBox, QWidget, QLabel, QComboBox, QHBoxLayout
+from PySide6.QtWidgets import (
+    QSpinBox,
+    QWidget,
+    QLabel,
+    QComboBox,
+    QHBoxLayout,
+    QLineEdit,
+)
 
 from defaults import (
     default_info_for_box_name,
@@ -27,6 +34,7 @@ class BoxSettingsUIHandler:
         self.widget_shotclock = None
         self.comboBox_shotclockPreset = None
         self.spinBox_shotclockMax = None
+        self.lineEdit_shotclockFormatInfo = None
         self._setupEditableSliderValues()
         self._setupShotclockControls()
         self.boxSettingsUiSetup()
@@ -47,10 +55,16 @@ class BoxSettingsUIHandler:
         self.spinBox_shotclockMax.setValue(39)
         self.spinBox_shotclockMax.setSuffix(" s")
         self.spinBox_shotclockMax.setKeyboardTracking(False)
+        self.lineEdit_shotclockFormatInfo = QLineEdit(self.widget_shotclock)
+        self.lineEdit_shotclockFormatInfo.setReadOnly(True)
+        self.lineEdit_shotclockFormatInfo.setMinimumWidth(180)
+        self.lineEdit_shotclockFormatInfo.setPlaceholderText("Format")
 
         layout.addWidget(label)
         layout.addWidget(self.comboBox_shotclockPreset)
         layout.addWidget(self.spinBox_shotclockMax)
+        layout.addWidget(QLabel("Format", self.widget_shotclock))
+        layout.addWidget(self.lineEdit_shotclockFormatInfo)
 
         # Place shotclock controls directly below the target row.
         self.ui.gridLayout_6.addWidget(self.widget_shotclock, 1, 2, 1, 2)
@@ -150,6 +164,8 @@ class BoxSettingsUIHandler:
         max_seconds = int(max_seconds)
         regex = self._buildShotclockRegex(max_seconds)
         self.ui.lineEdit_format.setText(regex)
+        if self.lineEdit_shotclockFormatInfo is not None:
+            self.lineEdit_shotclockFormatInfo.setText(regex)
         self.genericSettingsChanged("format_regex", regex)
         self.genericSettingsChanged("shotclock_max", max_seconds)
         self.ui.comboBox_formatPrefix.setCurrentIndex(12)
@@ -462,6 +478,10 @@ class BoxSettingsUIHandler:
                     max_seconds = 39
                 max_seconds = int(max_seconds)
                 self.spinBox_shotclockMax.setValue(max_seconds)
+                if self.lineEdit_shotclockFormatInfo is not None:
+                    self.lineEdit_shotclockFormatInfo.setText(
+                        item_obj.settings.get("format_regex", "")
+                    )
                 preset_index = 0
                 for i in range(self.comboBox_shotclockPreset.count()):
                     preset_value = self.comboBox_shotclockPreset.itemData(i)
