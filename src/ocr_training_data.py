@@ -1,6 +1,8 @@
 import tempfile
 import zipfile
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QUrl
 import cv2
 from numpy import ndarray
 from platformdirs import user_data_dir
@@ -193,8 +195,22 @@ class OCRTrainingDataDialog(QDialog):
     def open_folder(self):
         logger.debug("Opening OCR training data save folder")
         folder = self.ui.lineEdit_saveFolder.text()
-        if folder:
-            os.startfile(folder)
+        if not folder:
+            logger.error("No OCR training data folder set")
+            return
+        if not os.path.isdir(folder):
+            QMessageBox.warning(
+                self,
+                "Folder not found",
+                f"Folder does not exist:\n{folder}",
+            )
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(folder)):
+            QMessageBox.warning(
+                self,
+                "Cannot open folder",
+                f"Could not open:\n{folder}",
+            )
 
     def choose_save_folder(self):
         logger.debug("Choosing OCR training data save folder")
