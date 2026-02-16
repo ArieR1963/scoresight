@@ -6,6 +6,7 @@ from text_detection_target import TextDetectionTargetWithResult
 from sc_logging import logger
 from storage import subscribe_to_data, fetch_data
 from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 
 class VMixAPI:
@@ -23,6 +24,7 @@ class VMixAPI:
         self.tcp_port = tcp_port
         self.input_number = input_number
         self.field_mapping = field_mapping
+        self.field_input_map: dict[str, str] = {}
         self.mode = mode
         self.running = False
         self.update_same = fetch_data("scoresight.json", "vmix_send_same", False)
@@ -34,9 +36,50 @@ class VMixAPI:
     def set_field_mapping(self, field_mapping):
         self.field_mapping = field_mapping
 
+    def set_field_input_map(self, field_input_map: dict[str, str]):
+        self.field_input_map = field_input_map or {}
+
+    def _api_base_url(self) -> str:
+        raw_host = (self.host or "").strip()
+        if not raw_host:
+            return ""
+
+        if not raw_host.startswith(("http://", "https://")):
+            raw_host = f"http://{raw_host}"
+
+        parsed = urlparse(raw_host)
+        scheme = parsed.scheme or "http"
+        netloc = parsed.netloc or parsed.path
+        netloc = netloc.split("/")[0]
+        if not netloc:
+            return ""
+
+        if ":" in netloc:
+            return f"{scheme}://{netloc}"
+        return f"{scheme}://{netloc}:{self.port}"
+
+    def _api_url(self) -> str:
+        base = self._api_base_url()
+        if not base:
+            return ""
+        return f"{base}/api"
+
+    def ping_api(self) -> bool:
+        url = self._api_url()
+        if not url:
+            return False
+        try:
+            response = requests.get(url, timeout=1.5)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+
     def fetch_fields(self) -> list[str]:
         # vMix API endpoint returns XML with input and text field names.
-        url = f"http://{self.host}:{self.port}/api"
+        url = self._api_url()
+        if not url:
+            logger.error("Failed to build vMix API URL from host/port")
+            return []
         try:
             response = requests.get(url, timeout=3)
             response.raise_for_status()
@@ -51,28 +94,35 @@ class VMixAPI:
             return []
 
         target_input = None
-        for input_elem in root.findall(".//inputs/input"):
-            if (
-                input_elem.get("number") == str(self.input_number)
-                or input_elem.get("key") == str(self.input_number)
-                or input_elem.get("title") == str(self.input_number)
-            ):
-                target_input = input_elem
-                break
+        input_number = str(self.input_number).strip()
+        if input_number:
+            for input_elem in root.findall(".//inputs/input"):
+                if (
+                    input_elem.get("number") == input_number
+                    or input_elem.get("key") == input_number
+                    or input_elem.get("title") == input_number
+                ):
+                    target_input = input_elem
+                    break
 
         field_names = set()
+        field_input_map = {}
         search_roots = [target_input] if target_input is not None else root.findall(
             ".//inputs/input"
         )
         for input_elem in search_roots:
             if input_elem is None:
                 continue
+            input_ref = input_elem.get("number") or input_elem.get("key") or input_number
             for text_elem in input_elem.findall(".//text"):
                 name = text_elem.get("name")
                 if name:
                     field_names.add(name)
+                    if name not in field_input_map and input_ref:
+                        field_input_map[name] = str(input_ref)
 
         fields = sorted(field_names)
+        self.field_input_map = field_input_map
         if not fields:
             logger.warning(
                 "No vMix title text fields found for input '%s' at %s",
@@ -81,14 +131,18 @@ class VMixAPI:
             )
         return fields
 
-    def _send_settext_http(self, key: str, value: str):
+    def _send_settext_http(self, key: str, value: str, input_number: str):
+        api_url = self._api_url()
+        if not api_url:
+            logger.error("Failed to build vMix API URL from host/port")
+            return
         query = {
             "Function": "SetText",
-            "Input": self.input_number,
+            "Input": input_number,
             "SelectedName": key,
             "Value": value,
         }
-        url = f"http://{self.host}:{self.port}/api/?{urlencode(query)}"
+        url = f"{api_url}/?{urlencode(query)}"
         try:
             response = requests.post(url, timeout=2)
             if response.status_code != 200:
@@ -96,10 +150,10 @@ class VMixAPI:
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send data to {url}: {e}")
 
-    def _send_settext_tcp(self, key: str, value: str):
+    def _send_settext_tcp(self, key: str, value: str, input_number: str):
         params = urlencode(
             {
-                "Input": self.input_number,
+                "Input": input_number,
                 "SelectedName": key,
                 "Value": value,
             }
@@ -141,7 +195,10 @@ class VMixAPI:
             return
 
         for key, value in data.items():
+            input_number = str(
+                self.field_input_map.get(key) or self.input_number or "1"
+            )
             if self.mode == "api_plus":
-                self._send_settext_tcp(key, value)
+                self._send_settext_tcp(key, value, input_number)
             else:
-                self._send_settext_http(key, value)
+                self._send_settext_http(key, value, input_number)

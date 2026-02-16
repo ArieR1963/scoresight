@@ -1,212 +1,27 @@
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QStyledItemDelegate,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
+    QListWidget,
     QMessageBox,
+    QPushButton,
+    QStyledItemDelegate,
+    QTableView,
+    QVBoxLayout,
+    QWidget,
 )
 
-from text_detection_target import TextDetectionTarget
+from text_detection_target import TextDetectionTarget, TextDetectionTargetWithResult
 from ui_mainwindow import Ui_MainWindow
 from vmix_output import VMixAPI
 from sc_logging import logger
 from storage import fetch_data, store_data
-
-
-class VMixUIHanlder:
-    def __init__(self, ui: Ui_MainWindow):
-        self.ui = ui
-        self.vmixUpdater = None
-        self.vmixFieldNames: list[str] = []
-        self.vmixFieldDelegate = VMixFieldDelegate(self.vmixFieldNames)
-        self.comboBox_vmixMode = None
-        self.lineEdit_vmixTcpPort = None
-        self.pushButton_fetchVmixFields = None
-        self.vmixUiSetup()
-
-    def globalSettingsChanged(self, settingName, value):
-        store_data("scoresight.json", settingName, value)
-
-    def vmixConnectionChanged(self):
-        mode = (
-            self.comboBox_vmixMode.currentData()
-            if self.comboBox_vmixMode is not None
-            else "legacy_http"
-        )
-        tcp_port = (
-            self.lineEdit_vmixTcpPort.text()
-            if self.lineEdit_vmixTcpPort is not None
-            else "8099"
-        )
-        self.vmixUpdater = VMixAPI(
-            self.ui.lineEdit_vmixHost.text(),
-            self.ui.lineEdit_vmixPort.text(),
-            self.ui.inputLineEdit_vmix.text(),
-            {},
-            mode=mode,
-            tcp_port=tcp_port,
-        )
-        self.globalSettingsChanged("vmix_host", self.ui.lineEdit_vmixHost.text())
-        self.globalSettingsChanged("vmix_port", self.ui.lineEdit_vmixPort.text())
-        self.globalSettingsChanged("vmix_input", self.ui.inputLineEdit_vmix.text())
-        self.globalSettingsChanged("vmix_mode", mode)
-        self.globalSettingsChanged("vmix_tcp_port", tcp_port)
-
-    def vmixMappingChanged(self, _):
-        # store entire mapping data in scoresight.json
-        mapping = {}
-        model = self.ui.tableView_vmixMapping.model()
-        if isinstance(model, QStandardItemModel):
-            for i in range(model.rowCount()):
-                item = model.item(i, 0)
-                value = model.item(i, 1)
-                if item and value:
-                    mapping[item.text()] = value.text()
-            self.globalSettingsChanged("vmix_mapping", mapping)
-            self.vmixUpdater.set_field_mapping(mapping)
-        else:
-            logger.error("vmixMappingChanged: model is not a QStandardItemModel")
-
-    def vmixUiSetup(self):
-        # populate the vmix connection from storage
-        self.ui.lineEdit_vmixHost.setText(
-            fetch_data("scoresight.json", "vmix_host", "localhost")
-        )
-        self.ui.lineEdit_vmixPort.setText(
-            fetch_data("scoresight.json", "vmix_port", "8099")
-        )
-        self.ui.inputLineEdit_vmix.setText(
-            fetch_data("scoresight.json", "vmix_input", "1")
-        )
-        self._ensureVmixPlusControls()
-        self.comboBox_vmixMode.setCurrentIndex(
-            1 if fetch_data("scoresight.json", "vmix_mode", "legacy_http") == "api_plus" else 0
-        )
-        self.lineEdit_vmixTcpPort.setText(fetch_data("scoresight.json", "vmix_tcp_port", "8099"))
-        # connect the lineEdits to vmixConnectionChanged
-        self.ui.lineEdit_vmixHost.textChanged.connect(self.vmixConnectionChanged)
-        self.ui.lineEdit_vmixPort.textChanged.connect(self.vmixConnectionChanged)
-        self.ui.inputLineEdit_vmix.textChanged.connect(self.vmixConnectionChanged)
-        self.comboBox_vmixMode.currentIndexChanged.connect(self.vmixConnectionChanged)
-        self.lineEdit_vmixTcpPort.textChanged.connect(self.vmixConnectionChanged)
-        self.pushButton_fetchVmixFields.clicked.connect(self.fetchVmixFields)
-
-        # create the vmixUpdater
-        self.vmixUpdater = VMixAPI(
-            self.ui.lineEdit_vmixHost.text(),
-            self.ui.lineEdit_vmixPort.text(),
-            self.ui.inputLineEdit_vmix.text(),
-            {},
-            mode=self.comboBox_vmixMode.currentData(),
-            tcp_port=self.lineEdit_vmixTcpPort.text(),
-        )
-        # add standard item model to the tableView_vmixMapping
-        self.ui.tableView_vmixMapping.setModel(QStandardItemModel())
-        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
-        mapping = fetch_data("scoresight.json", "vmix_mapping", {})
-        if mapping:
-            self.vmixUpdater.set_field_mapping(mapping)
-
-        self.ui.tableView_vmixMapping.model().dataChanged.connect(
-            self.vmixMappingChanged
-        )
-
-        self.ui.pushButton_startvmix.toggled.connect(self.togglevMix)
-
-    def togglevMix(self, value):
-        if not self.vmixUpdater:
-            return
-        if value:
-            self.ui.pushButton_startvmix.setText("🛑 Stop vMix")
-            self.vmixUpdater.running = True
-        else:
-            self.ui.pushButton_startvmix.setText("▶️ Start vMix")
-            self.vmixUpdater.running = False
-
-    def _ensureVmixPlusControls(self):
-        layout = self.ui.connectionWidget.layout()
-        if layout is None:
-            return
-        if self.comboBox_vmixMode is None:
-            self.comboBox_vmixMode = QComboBox(self.ui.connectionWidget)
-            self.comboBox_vmixMode.addItem("Legacy HTTP", "legacy_http")
-            self.comboBox_vmixMode.addItem("vMix API+", "api_plus")
-            self.comboBox_vmixMode.setMaximumWidth(130)
-            layout.insertWidget(4, self.comboBox_vmixMode)
-        if self.lineEdit_vmixTcpPort is None:
-            tcp_label = QLabel("TCP", self.ui.connectionWidget)
-            layout.insertWidget(5, tcp_label)
-            self.lineEdit_vmixTcpPort = QLineEdit(self.ui.connectionWidget)
-            self.lineEdit_vmixTcpPort.setMaximumWidth(50)
-            layout.insertWidget(6, self.lineEdit_vmixTcpPort)
-        if self.pushButton_fetchVmixFields is None:
-            self.pushButton_fetchVmixFields = QPushButton("Fetch Fields", self.ui.connectionWidget)
-            self.pushButton_fetchVmixFields.setMaximumWidth(110)
-            layout.insertWidget(7, self.pushButton_fetchVmixFields)
-
-    def fetchVmixFields(self):
-        if self.vmixUpdater is None:
-            return
-        if self.comboBox_vmixMode.currentData() != "api_plus":
-            QMessageBox.information(
-                self.ui.tab_vmix,
-                "vMix API+",
-                "Switch mode to 'vMix API+' to fetch template field names.",
-            )
-            return
-        fields = self.vmixUpdater.fetch_fields()
-        if not fields:
-            QMessageBox.warning(
-                self.ui.tab_vmix,
-                "vMix API+",
-                "No template field names found. Check host/port/input and try again.",
-            )
-            return
-        self.vmixFieldNames = fields
-        self.vmixFieldDelegate.set_field_names(fields)
-        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
-
-    def updatevMixTable(self, detectionTargets: list[TextDetectionTarget]):
-        mapping_storage = fetch_data("scoresight.json", "vmix_mapping")
-        model = QStandardItemModel()
-        model.blockSignals(True)
-
-        for box in detectionTargets:
-            # add the detection to the vmix output mapping: tableView_vmixMapping
-            # check if the table already has the detectionTarget
-            items = model.findItems(box.name, Qt.MatchFlag.MatchExactly)
-            if len(items) == 0:
-                # add the item to the list
-                row = model.rowCount()
-                model.insertRow(row)
-                model.setItem(row, 0, QStandardItem(box.name))
-                # the first item shouldn't be editable
-                model.item(row, 0).setFlags(Qt.ItemFlag.NoItemFlags)
-            else:
-                # update the item in the list
-                item = items[0]
-                row = item.row()
-
-            # get value from storage or use the box name
-            if mapping_storage and box.name in mapping_storage:
-                model.setItem(row, 1, QStandardItem(mapping_storage[box.name]))
-            else:
-                model.setItem(row, 1, QStandardItem(box.name))
-        # remove the items that are not in the detectionTargets
-        for i in range(model.rowCount()):
-            item = model.item(i, 0)
-            if not any([box.name == item.text() for box in detectionTargets]):
-                model.removeRow(i)
-
-        model.blockSignals(False)
-        self.ui.tableView_vmixMapping.setModel(model)
-        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
-        self.ui.tableView_vmixMapping.model().dataChanged.connect(
-            self.vmixMappingChanged
-        )
 
 
 class VMixFieldDelegate(QStyledItemDelegate):
@@ -237,3 +52,257 @@ class VMixFieldDelegate(QStyledItemDelegate):
             model.setData(index, editor.currentText())
             return
         super().setModelData(editor, model, index)
+
+
+class VMixUIHanlder:
+    def __init__(self, ui: Ui_MainWindow):
+        self.ui = ui
+        self.vmixUpdater = None
+        self.vmixApiPlusUpdater = None
+        self.vmixApiPlusConnected = False
+        self.vmixApiPlusFieldNames: list[str] = []
+        self.vmixApiPlusDelegate = VMixFieldDelegate(self.vmixApiPlusFieldNames)
+        self._apiPlusProbeTimer = QTimer()
+        self._apiPlusProbeTimer.setSingleShot(True)
+        self._apiPlusProbeTimer.timeout.connect(self._probeVmixApiPlusConnection)
+        self.vmixUiSetup()
+
+    def globalSettingsChanged(self, settingName, value):
+        store_data("scoresight.json", settingName, value)
+
+    # -------- Legacy vMix --------
+    def vmixConnectionChanged(self):
+        self.vmixUpdater = VMixAPI(
+            self.ui.lineEdit_vmixHost.text(),
+            self.ui.lineEdit_vmixPort.text(),
+            self.ui.inputLineEdit_vmix.text(),
+            {},
+            mode="legacy_http",
+        )
+        self.globalSettingsChanged("vmix_host", self.ui.lineEdit_vmixHost.text())
+        self.globalSettingsChanged("vmix_port", self.ui.lineEdit_vmixPort.text())
+        self.globalSettingsChanged("vmix_input", self.ui.inputLineEdit_vmix.text())
+
+    def vmixMappingChanged(self, _):
+        mapping = self._model_to_mapping(self.ui.tableView_vmixMapping.model())
+        self.globalSettingsChanged("vmix_mapping", mapping)
+        if self.vmixUpdater:
+            self.vmixUpdater.set_field_mapping(mapping)
+
+    def togglevMix(self, value):
+        if not self.vmixUpdater:
+            return
+        if value:
+            self.ui.pushButton_startvmix.setText("🛑 Stop vMix")
+            self.vmixUpdater.running = True
+        else:
+            self.ui.pushButton_startvmix.setText("▶️ Start vMix")
+            self.vmixUpdater.running = False
+
+    # -------- vMix API+ --------
+    def _createVmixApiPlusTab(self):
+        self.tab_vmix_api_plus = QWidget()
+        self.tab_vmix_api_plus.setObjectName("tab_vmix_api_plus")
+        grid = QGridLayout(self.tab_vmix_api_plus)
+        grid.setVerticalSpacing(2)
+
+        self.tableView_vmixApiPlusMapping = QTableView(self.tab_vmix_api_plus)
+        self.tableView_vmixApiPlusMapping.horizontalHeader().setVisible(False)
+        self.tableView_vmixApiPlusMapping.horizontalHeader().setStretchLastSection(True)
+        self.tableView_vmixApiPlusMapping.setModel(QStandardItemModel())
+        self.tableView_vmixApiPlusMapping.setItemDelegateForColumn(
+            1, self.vmixApiPlusDelegate
+        )
+        grid.addWidget(self.tableView_vmixApiPlusMapping, 1, 0, 1, 1)
+
+        wrapper = QWidget(self.tab_vmix_api_plus)
+        vbox = QVBoxLayout(wrapper)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(3)
+
+        row1 = QWidget(wrapper)
+        h1 = QHBoxLayout(row1)
+        h1.setContentsMargins(0, 0, 0, 0)
+        h1.setSpacing(3)
+        h1.addWidget(QLabel("Connection", row1))
+        self.lineEdit_vmixApiPlusHost = QLineEdit(row1)
+        self.lineEdit_vmixApiPlusHost.setText(
+            fetch_data("scoresight.json", "vmix_api_plus_host", "localhost")
+        )
+        h1.addWidget(self.lineEdit_vmixApiPlusHost)
+        h1.addWidget(QLabel(":", row1))
+        self.lineEdit_vmixApiPlusPort = QLineEdit(row1)
+        self.lineEdit_vmixApiPlusPort.setMaximumWidth(60)
+        self.lineEdit_vmixApiPlusPort.setText(
+            fetch_data("scoresight.json", "vmix_api_plus_port", "8088")
+        )
+        h1.addWidget(self.lineEdit_vmixApiPlusPort)
+        self.pushButton_fetchVmixApiPlusFields = QPushButton("Fetch Fields", row1)
+        h1.addWidget(self.pushButton_fetchVmixApiPlusFields)
+        self.label_vmixApiPlusStatus = QLabel("● Disconnected", row1)
+        self.label_vmixApiPlusStatus.setStyleSheet("color:#d96f6f;")
+        h1.addWidget(self.label_vmixApiPlusStatus)
+        vbox.addWidget(row1)
+
+        self.checkBox_vmix_api_plus_send_same = self.ui.checkBox_vmix_send_same
+
+        grid.addWidget(wrapper, 0, 0, 1, 1)
+        vmix_index = self.ui.tabWidget_outputs.indexOf(self.ui.tab_vmix)
+        if vmix_index >= 0:
+            self.ui.tabWidget_outputs.insertTab(
+                vmix_index + 1, self.tab_vmix_api_plus, "vMix API+"
+            )
+        else:
+            self.ui.tabWidget_outputs.addTab(self.tab_vmix_api_plus, "vMix API+")
+
+    def vmixApiPlusConnectionChanged(self):
+        self.vmixApiPlusUpdater = VMixAPI(
+            self.lineEdit_vmixApiPlusHost.text(),
+            self.lineEdit_vmixApiPlusPort.text(),
+            "",
+            {},
+            mode="api_plus",
+            tcp_port="8099",
+        )
+        self.vmixApiPlusUpdater.running = True
+        self.globalSettingsChanged("vmix_api_plus_host", self.lineEdit_vmixApiPlusHost.text())
+        self.globalSettingsChanged("vmix_api_plus_port", self.lineEdit_vmixApiPlusPort.text())
+        self._setApiPlusStatus(False)
+        self._apiPlusProbeTimer.start(350)
+
+    def vmixApiPlusMappingChanged(self, _):
+        mapping = self._model_to_mapping(self.tableView_vmixApiPlusMapping.model())
+        self.globalSettingsChanged("vmix_api_plus_mapping", mapping)
+        if self.vmixApiPlusUpdater:
+            self.vmixApiPlusUpdater.set_field_mapping(mapping)
+
+    def _setApiPlusStatus(self, connected: bool):
+        self.vmixApiPlusConnected = connected
+        if connected:
+            self.label_vmixApiPlusStatus.setText("● Connected")
+            self.label_vmixApiPlusStatus.setStyleSheet("color:#6bd67a;")
+        else:
+            self.label_vmixApiPlusStatus.setText("● Disconnected")
+            self.label_vmixApiPlusStatus.setStyleSheet("color:#d96f6f;")
+
+    def _probeVmixApiPlusConnection(self):
+        if self.vmixApiPlusUpdater is None:
+            self._setApiPlusStatus(False)
+            return
+        self._setApiPlusStatus(self.vmixApiPlusUpdater.ping_api())
+
+    def fetchVmixApiPlusFields(self):
+        if self.vmixApiPlusUpdater is None:
+            return
+        fields = self.vmixApiPlusUpdater.fetch_fields()
+        if not fields:
+            self._setApiPlusStatus(False)
+            QMessageBox.warning(
+                self.tab_vmix_api_plus,
+                "vMix API+",
+                "No text fields found. Check host/port and try again.",
+            )
+            return
+        self.vmixApiPlusFieldNames = fields
+        self.vmixApiPlusDelegate.set_field_names(fields)
+        self.tableView_vmixApiPlusMapping.setItemDelegateForColumn(1, self.vmixApiPlusDelegate)
+        self._setApiPlusStatus(True)
+        self._showVmixApiPlusFieldsPopup(fields)
+
+    def _showVmixApiPlusFieldsPopup(self, fields: list[str]):
+        dialog = QDialog(self.tab_vmix_api_plus)
+        dialog.setWindowTitle("vMix API+ Fields")
+        dialog.setMinimumWidth(460)
+        layout = QVBoxLayout(dialog)
+        label = QLabel(
+            f"Found {len(fields)} field names from /api (<text name=\"...\">).",
+            dialog,
+        )
+        layout.addWidget(label)
+        list_widget = QListWidget(dialog)
+        list_widget.addItems(fields)
+        layout.addWidget(list_widget)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok, dialog)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    # -------- Shared --------
+    def _model_to_mapping(self, model) -> dict:
+        mapping = {}
+        if isinstance(model, QStandardItemModel):
+            for i in range(model.rowCount()):
+                item = model.item(i, 0)
+                value = model.item(i, 1)
+                if item and value:
+                    mapping[item.text()] = value.text()
+        else:
+            logger.error("vMix mapping model is not a QStandardItemModel")
+        return mapping
+
+    def vmixUiSetup(self):
+        # Legacy setup (existing tab kept)
+        self.ui.lineEdit_vmixHost.setText(fetch_data("scoresight.json", "vmix_host", "localhost"))
+        self.ui.lineEdit_vmixPort.setText(fetch_data("scoresight.json", "vmix_port", "8099"))
+        self.ui.inputLineEdit_vmix.setText(fetch_data("scoresight.json", "vmix_input", "1"))
+        self.ui.lineEdit_vmixHost.textChanged.connect(self.vmixConnectionChanged)
+        self.ui.lineEdit_vmixPort.textChanged.connect(self.vmixConnectionChanged)
+        self.ui.inputLineEdit_vmix.textChanged.connect(self.vmixConnectionChanged)
+        self.vmixConnectionChanged()
+        self.ui.tableView_vmixMapping.setModel(QStandardItemModel())
+        self.ui.tableView_vmixMapping.model().dataChanged.connect(self.vmixMappingChanged)
+        self.ui.pushButton_startvmix.toggled.connect(self.togglevMix)
+
+        mapping = fetch_data("scoresight.json", "vmix_mapping", {})
+        if mapping and self.vmixUpdater:
+            self.vmixUpdater.set_field_mapping(mapping)
+
+        # API+ setup (new tab)
+        self._createVmixApiPlusTab()
+        self.lineEdit_vmixApiPlusHost.textChanged.connect(self.vmixApiPlusConnectionChanged)
+        self.lineEdit_vmixApiPlusPort.textChanged.connect(self.vmixApiPlusConnectionChanged)
+        self.pushButton_fetchVmixApiPlusFields.clicked.connect(self.fetchVmixApiPlusFields)
+        self.vmixApiPlusConnectionChanged()
+        self.tableView_vmixApiPlusMapping.model().dataChanged.connect(self.vmixApiPlusMappingChanged)
+
+        mapping_plus = fetch_data("scoresight.json", "vmix_api_plus_mapping", {})
+        if mapping_plus and self.vmixApiPlusUpdater:
+            self.vmixApiPlusUpdater.set_field_mapping(mapping_plus)
+
+    def updatevMixTable(self, detectionTargets: list[TextDetectionTarget]):
+        mapping_storage = fetch_data("scoresight.json", "vmix_mapping", {})
+        model = QStandardItemModel()
+        model.blockSignals(True)
+        for box in detectionTargets:
+            row = model.rowCount()
+            model.insertRow(row)
+            model.setItem(row, 0, QStandardItem(box.name))
+            model.item(row, 0).setFlags(Qt.ItemFlag.NoItemFlags)
+            model.setItem(row, 1, QStandardItem(mapping_storage.get(box.name, box.name)))
+        model.blockSignals(False)
+        self.ui.tableView_vmixMapping.setModel(model)
+        self.ui.tableView_vmixMapping.model().dataChanged.connect(self.vmixMappingChanged)
+
+        mapping_plus = fetch_data("scoresight.json", "vmix_api_plus_mapping", {})
+        model_plus = QStandardItemModel()
+        model_plus.blockSignals(True)
+        for box in detectionTargets:
+            row = model_plus.rowCount()
+            model_plus.insertRow(row)
+            model_plus.setItem(row, 0, QStandardItem(box.name))
+            model_plus.item(row, 0).setFlags(Qt.ItemFlag.NoItemFlags)
+            model_plus.setItem(row, 1, QStandardItem(mapping_plus.get(box.name, box.name)))
+        model_plus.blockSignals(False)
+        self.tableView_vmixApiPlusMapping.setModel(model_plus)
+        self.tableView_vmixApiPlusMapping.setItemDelegateForColumn(
+            1, self.vmixApiPlusDelegate
+        )
+        self.tableView_vmixApiPlusMapping.model().dataChanged.connect(
+            self.vmixApiPlusMappingChanged
+        )
+
+    def updatevMixOutputs(self, results: list[TextDetectionTargetWithResult]):
+        if self.vmixUpdater is not None:
+            self.vmixUpdater.update_vmix(results)
+        if self.vmixApiPlusUpdater is not None and self.vmixApiPlusConnected:
+            self.vmixApiPlusUpdater.update_vmix(results)
