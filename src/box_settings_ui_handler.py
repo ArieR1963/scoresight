@@ -25,11 +25,32 @@ class BoxSettingsUIHandler:
         self.ui = ui
         self.sliderValueInputs = {}
         self.shotclockPresets = [
-            ("Custom", None),
-            ("Basketball / Waterpolo (24)", 24),
-            ("NCAA Basketball (30)", 30),
-            ("Korfbal (25)", 25),
-            ("Roller Hockey (45)", 45),
+            {"label": "Custom", "max": None, "regex": None},
+            {
+                "label": "Basketball (24)",
+                "max": 24,
+                "regex": r"^(?:(?:[6-9]|1\d|2[0-4])|(?:[0-5](?:\.[0-9])?))$",
+            },
+            {
+                "label": "NCAA Basketball (30)",
+                "max": 30,
+                "regex": r"^(?:(?:[6-9]|[12]\d|30)|(?:[0-5](?:\.[0-9])?))$",
+            },
+            {
+                "label": "Waterpolo (24)",
+                "max": 24,
+                "regex": r"^(?:(?:1\d|2[0-4])|(?:[0-9](?:\.[0-9])?))$",
+            },
+            {
+                "label": "Korfbal (25)",
+                "max": 25,
+                "regex": r"^(?:0\d|1\d|2[0-5])$",
+            },
+            {
+                "label": "Roller Hockey (45)",
+                "max": 45,
+                "regex": r"^(?:(?:[6-9]|[1-3]\d|4[0-5])|(?:[0-5](?:\.[0-9])?))$",
+            },
         ]
         self.widget_shotclock = None
         self.comboBox_shotclockPreset = None
@@ -48,8 +69,8 @@ class BoxSettingsUIHandler:
 
         label = QLabel("Shotclock Max", self.widget_shotclock)
         self.comboBox_shotclockPreset = QComboBox(self.widget_shotclock)
-        for text, value in self.shotclockPresets:
-            self.comboBox_shotclockPreset.addItem(text, value)
+        for i, preset in enumerate(self.shotclockPresets):
+            self.comboBox_shotclockPreset.addItem(preset["label"], i)
         self.spinBox_shotclockMax = QSpinBox(self.widget_shotclock)
         self.spinBox_shotclockMax.setRange(1, 59)
         self.spinBox_shotclockMax.setValue(39)
@@ -153,6 +174,16 @@ class BoxSettingsUIHandler:
             return f"^0?[0-{ones}]$"
         return f"^(?:[0-{tens - 1}]\\d|{tens}[0-{ones}])$"
 
+    def _selectedShotclockPreset(self):
+        if self.comboBox_shotclockPreset is None:
+            return None
+        preset_index = self.comboBox_shotclockPreset.currentData()
+        if preset_index is None:
+            return None
+        if int(preset_index) < 0 or int(preset_index) >= len(self.shotclockPresets):
+            return None
+        return self.shotclockPresets[int(preset_index)]
+
     def _isShotClockTarget(self, item_name: str, item_obj) -> bool:
         if "shot" in item_name.lower() and "clock" in item_name.lower():
             return True
@@ -160,9 +191,8 @@ class BoxSettingsUIHandler:
             return False
         return item_obj.settings.get("shotclock_max") is not None
 
-    def _applyShotclockMax(self, max_seconds: int):
+    def _applyShotclockSettings(self, max_seconds: int, regex: str):
         max_seconds = int(max_seconds)
-        regex = self._buildShotclockRegex(max_seconds)
         self.ui.lineEdit_format.setText(regex)
         if self.lineEdit_shotclockFormatInfo is not None:
             self.lineEdit_shotclockFormatInfo.setText(regex)
@@ -170,19 +200,31 @@ class BoxSettingsUIHandler:
         self.genericSettingsChanged("shotclock_max", max_seconds)
         self.ui.comboBox_formatPrefix.setCurrentIndex(12)
 
+    def _applyShotclockMax(self, max_seconds: int):
+        self._applyShotclockSettings(max_seconds, self._buildShotclockRegex(max_seconds))
+
     def shotclockPresetChanged(self, index: int):
         if self.comboBox_shotclockPreset is None or self.spinBox_shotclockMax is None:
             return
-        preset_value = self.comboBox_shotclockPreset.itemData(index)
-        if preset_value is None:
+        preset_index = self.comboBox_shotclockPreset.itemData(index)
+        if preset_index is None:
             return
-        self.spinBox_shotclockMax.setValue(int(preset_value))
+        preset = self.shotclockPresets[int(preset_index)]
+        if preset["max"] is None:
+            return
+        with QSignalBlocker(self.spinBox_shotclockMax):
+            self.spinBox_shotclockMax.setValue(int(preset["max"]))
+        self._applyShotclockSettings(int(preset["max"]), str(preset["regex"]))
 
     def shotclockMaxChanged(self, value: int):
         if self.comboBox_shotclockPreset is None:
             return
-        selected_preset = self.comboBox_shotclockPreset.currentData()
-        if selected_preset is not None and int(selected_preset) != int(value):
+        selected_preset = self._selectedShotclockPreset()
+        if (
+            selected_preset is not None
+            and selected_preset["max"] is not None
+            and int(selected_preset["max"]) != int(value)
+        ):
             with QSignalBlocker(self.comboBox_shotclockPreset):
                 self.comboBox_shotclockPreset.setCurrentIndex(0)
         self._applyShotclockMax(value)
@@ -494,9 +536,11 @@ class BoxSettingsUIHandler:
                         item_obj.settings.get("format_regex", "")
                     )
                 preset_index = 0
-                for i in range(self.comboBox_shotclockPreset.count()):
-                    preset_value = self.comboBox_shotclockPreset.itemData(i)
-                    if preset_value is not None and int(preset_value) == max_seconds:
+                current_regex = item_obj.settings.get("format_regex", "")
+                for i, preset in enumerate(self.shotclockPresets):
+                    if preset["max"] is None:
+                        continue
+                    if int(preset["max"]) == max_seconds and str(preset["regex"]) == current_regex:
                         preset_index = i
                         break
                 self.comboBox_shotclockPreset.setCurrentIndex(preset_index)
