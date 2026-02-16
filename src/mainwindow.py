@@ -997,8 +997,11 @@ class MainWindow(QMainWindow):
         self.listItemClicked(item)
 
     def fourCornersApplied(self, corners):
-        # check the button
-        self.ui.pushButton_fourCorner.setChecked(True)
+        # Leave the button visually off after apply; checked state is only for
+        # "selection mode", not for "four-corner is active".
+        self.ui.pushButton_fourCorner.blockSignals(True)
+        self.ui.pushButton_fourCorner.setChecked(False)
+        self.ui.pushButton_fourCorner.blockSignals(False)
         self._auto_enable_binary_after_four_corners = True
         self._maybeEnableBinaryPreviewAfterFourCorners()
 
