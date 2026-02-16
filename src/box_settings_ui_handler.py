@@ -1,4 +1,6 @@
 from functools import partial
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtWidgets import QSpinBox
 
 from defaults import (
     default_info_for_box_name,
@@ -14,8 +16,69 @@ from sc_logging import logger
 class BoxSettingsUIHandler:
     def __init__(self, ui: Ui_MainWindow):
         self.ui = ui
+        self.sliderValueInputs = {}
+        self._setupEditableSliderValues()
         self.boxSettingsUiSetup()
         self.detectionTargetsStorage = TextDetectionTargetMemoryStorage()
+
+    def _replaceLabelWithSpinBox(self, label_widget, minimum, maximum, suffix=""):
+        container = label_widget.parentWidget()
+        if container is None or container.layout() is None:
+            return None
+        layout = container.layout()
+        spin = QSpinBox(container)
+        spin.setRange(minimum, maximum)
+        spin.setAlignment(label_widget.alignment())
+        spin.setMinimumSize(label_widget.minimumSize())
+        spin.setMaximumWidth(70)
+        spin.setSuffix(suffix)
+        spin.setKeyboardTracking(False)
+        layout.replaceWidget(label_widget, spin)
+        label_widget.hide()
+        return spin
+
+    def _setupEditableSliderValues(self):
+        conf_input = self._replaceLabelWithSpinBox(
+            self.ui.label_conf_thresh_value,
+            self.ui.horizontalSlider_conf_thresh.minimum(),
+            self.ui.horizontalSlider_conf_thresh.maximum(),
+            "%",
+        )
+        cleanup_input = self._replaceLabelWithSpinBox(
+            self.ui.label_cleanup_value,
+            self.ui.horizontalSlider_cleanup.minimum(),
+            self.ui.horizontalSlider_cleanup.maximum(),
+            "%",
+        )
+        dilate_input = self._replaceLabelWithSpinBox(
+            self.ui.label_dilate_value,
+            self.ui.horizontalSlider_dilate.minimum(),
+            self.ui.horizontalSlider_dilate.maximum(),
+        )
+        skew_input = self._replaceLabelWithSpinBox(
+            self.ui.label_skew_value,
+            self.ui.horizontalSlider_skew.minimum(),
+            self.ui.horizontalSlider_skew.maximum(),
+        )
+        vscale_input = self._replaceLabelWithSpinBox(
+            self.ui.label_vscale_value,
+            self.ui.horizontalSlider_vscale.minimum(),
+            self.ui.horizontalSlider_vscale.maximum(),
+        )
+        self.sliderValueInputs = {
+            "conf": (self.ui.horizontalSlider_conf_thresh, conf_input),
+            "cleanup": (self.ui.horizontalSlider_cleanup, cleanup_input),
+            "dilate": (self.ui.horizontalSlider_dilate, dilate_input),
+            "skew": (self.ui.horizontalSlider_skew, skew_input),
+            "vscale": (self.ui.horizontalSlider_vscale, vscale_input),
+        }
+
+        for _, pair in self.sliderValueInputs.items():
+            slider, spin = pair
+            if spin is None:
+                continue
+            slider.valueChanged.connect(spin.setValue)
+            spin.valueChanged.connect(slider.setValue)
 
     def editSettings(self, settingsMutatorCallback):
         # update the selected item's settings in the detectionTargetsStorage
@@ -324,3 +387,9 @@ class BoxSettingsUIHandler:
         self.ui.label_dilate_value.setText(str(self.ui.horizontalSlider_dilate.value()))
         self.ui.label_skew_value.setText(str(self.ui.horizontalSlider_skew.value()))
         self.ui.label_vscale_value.setText(str(self.ui.horizontalSlider_vscale.value()))
+        for _, pair in self.sliderValueInputs.items():
+            slider, spin = pair
+            if spin is None:
+                continue
+            with QSignalBlocker(spin):
+                spin.setValue(slider.value())
