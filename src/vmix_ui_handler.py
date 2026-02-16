@@ -1,5 +1,13 @@
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QStyledItemDelegate,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QMessageBox,
+)
 
 from text_detection_target import TextDetectionTarget
 from ui_mainwindow import Ui_MainWindow
@@ -12,21 +20,40 @@ class VMixUIHanlder:
     def __init__(self, ui: Ui_MainWindow):
         self.ui = ui
         self.vmixUpdater = None
+        self.vmixFieldNames: list[str] = []
+        self.vmixFieldDelegate = VMixFieldDelegate(self.vmixFieldNames)
+        self.comboBox_vmixMode = None
+        self.lineEdit_vmixTcpPort = None
+        self.pushButton_fetchVmixFields = None
         self.vmixUiSetup()
 
     def globalSettingsChanged(self, settingName, value):
         store_data("scoresight.json", settingName, value)
 
     def vmixConnectionChanged(self):
+        mode = (
+            self.comboBox_vmixMode.currentData()
+            if self.comboBox_vmixMode is not None
+            else "legacy_http"
+        )
+        tcp_port = (
+            self.lineEdit_vmixTcpPort.text()
+            if self.lineEdit_vmixTcpPort is not None
+            else "8099"
+        )
         self.vmixUpdater = VMixAPI(
             self.ui.lineEdit_vmixHost.text(),
             self.ui.lineEdit_vmixPort.text(),
             self.ui.inputLineEdit_vmix.text(),
             {},
+            mode=mode,
+            tcp_port=tcp_port,
         )
         self.globalSettingsChanged("vmix_host", self.ui.lineEdit_vmixHost.text())
         self.globalSettingsChanged("vmix_port", self.ui.lineEdit_vmixPort.text())
         self.globalSettingsChanged("vmix_input", self.ui.inputLineEdit_vmix.text())
+        self.globalSettingsChanged("vmix_mode", mode)
+        self.globalSettingsChanged("vmix_tcp_port", tcp_port)
 
     def vmixMappingChanged(self, _):
         # store entire mapping data in scoresight.json
@@ -54,10 +81,18 @@ class VMixUIHanlder:
         self.ui.inputLineEdit_vmix.setText(
             fetch_data("scoresight.json", "vmix_input", "1")
         )
+        self._ensureVmixPlusControls()
+        self.comboBox_vmixMode.setCurrentIndex(
+            1 if fetch_data("scoresight.json", "vmix_mode", "legacy_http") == "api_plus" else 0
+        )
+        self.lineEdit_vmixTcpPort.setText(fetch_data("scoresight.json", "vmix_tcp_port", "8099"))
         # connect the lineEdits to vmixConnectionChanged
         self.ui.lineEdit_vmixHost.textChanged.connect(self.vmixConnectionChanged)
         self.ui.lineEdit_vmixPort.textChanged.connect(self.vmixConnectionChanged)
         self.ui.inputLineEdit_vmix.textChanged.connect(self.vmixConnectionChanged)
+        self.comboBox_vmixMode.currentIndexChanged.connect(self.vmixConnectionChanged)
+        self.lineEdit_vmixTcpPort.textChanged.connect(self.vmixConnectionChanged)
+        self.pushButton_fetchVmixFields.clicked.connect(self.fetchVmixFields)
 
         # create the vmixUpdater
         self.vmixUpdater = VMixAPI(
@@ -65,9 +100,12 @@ class VMixUIHanlder:
             self.ui.lineEdit_vmixPort.text(),
             self.ui.inputLineEdit_vmix.text(),
             {},
+            mode=self.comboBox_vmixMode.currentData(),
+            tcp_port=self.lineEdit_vmixTcpPort.text(),
         )
         # add standard item model to the tableView_vmixMapping
         self.ui.tableView_vmixMapping.setModel(QStandardItemModel())
+        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
         mapping = fetch_data("scoresight.json", "vmix_mapping", {})
         if mapping:
             self.vmixUpdater.set_field_mapping(mapping)
@@ -87,6 +125,49 @@ class VMixUIHanlder:
         else:
             self.ui.pushButton_startvmix.setText("▶️ Start vMix")
             self.vmixUpdater.running = False
+
+    def _ensureVmixPlusControls(self):
+        layout = self.ui.connectionWidget.layout()
+        if layout is None:
+            return
+        if self.comboBox_vmixMode is None:
+            self.comboBox_vmixMode = QComboBox(self.ui.connectionWidget)
+            self.comboBox_vmixMode.addItem("Legacy HTTP", "legacy_http")
+            self.comboBox_vmixMode.addItem("vMix API+", "api_plus")
+            self.comboBox_vmixMode.setMaximumWidth(130)
+            layout.insertWidget(4, self.comboBox_vmixMode)
+        if self.lineEdit_vmixTcpPort is None:
+            tcp_label = QLabel("TCP", self.ui.connectionWidget)
+            layout.insertWidget(5, tcp_label)
+            self.lineEdit_vmixTcpPort = QLineEdit(self.ui.connectionWidget)
+            self.lineEdit_vmixTcpPort.setMaximumWidth(50)
+            layout.insertWidget(6, self.lineEdit_vmixTcpPort)
+        if self.pushButton_fetchVmixFields is None:
+            self.pushButton_fetchVmixFields = QPushButton("Fetch Fields", self.ui.connectionWidget)
+            self.pushButton_fetchVmixFields.setMaximumWidth(110)
+            layout.insertWidget(7, self.pushButton_fetchVmixFields)
+
+    def fetchVmixFields(self):
+        if self.vmixUpdater is None:
+            return
+        if self.comboBox_vmixMode.currentData() != "api_plus":
+            QMessageBox.information(
+                self.ui.tab_vmix,
+                "vMix API+",
+                "Switch mode to 'vMix API+' to fetch template field names.",
+            )
+            return
+        fields = self.vmixUpdater.fetch_fields()
+        if not fields:
+            QMessageBox.warning(
+                self.ui.tab_vmix,
+                "vMix API+",
+                "No template field names found. Check host/port/input and try again.",
+            )
+            return
+        self.vmixFieldNames = fields
+        self.vmixFieldDelegate.set_field_names(fields)
+        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
 
     def updatevMixTable(self, detectionTargets: list[TextDetectionTarget]):
         mapping_storage = fetch_data("scoresight.json", "vmix_mapping")
@@ -122,6 +203,37 @@ class VMixUIHanlder:
 
         model.blockSignals(False)
         self.ui.tableView_vmixMapping.setModel(model)
+        self.ui.tableView_vmixMapping.setItemDelegateForColumn(1, self.vmixFieldDelegate)
         self.ui.tableView_vmixMapping.model().dataChanged.connect(
             self.vmixMappingChanged
         )
+
+
+class VMixFieldDelegate(QStyledItemDelegate):
+    def __init__(self, field_names: list[str]):
+        super().__init__()
+        self.field_names = field_names or []
+
+    def set_field_names(self, field_names: list[str]):
+        self.field_names = field_names or []
+
+    def createEditor(self, parent, option, index):
+        if index.column() != 1:
+            return super().createEditor(parent, option, index)
+        editor = QComboBox(parent)
+        editor.setEditable(True)
+        editor.addItems(self.field_names)
+        return editor
+
+    def setEditorData(self, editor, index):
+        if isinstance(editor, QComboBox):
+            value = index.data(Qt.ItemDataRole.EditRole) or index.data() or ""
+            editor.setCurrentText(str(value))
+            return
+        super().setEditorData(editor, index)
+
+    def setModelData(self, editor, model, index):
+        if isinstance(editor, QComboBox):
+            model.setData(index, editor.currentText())
+            return
+        super().setModelData(editor, model, index)
