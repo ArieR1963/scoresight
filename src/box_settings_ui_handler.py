@@ -52,7 +52,9 @@ class BoxSettingsUIHandler:
         layout.addWidget(self.comboBox_shotclockPreset)
         layout.addWidget(self.spinBox_shotclockMax)
 
-        self.ui.gridLayout_6.addWidget(self.widget_shotclock, 1, 2, 1, 1)
+        # Place shotclock controls on a dedicated free row to avoid overlap with
+        # existing Format/Type widgets.
+        self.ui.gridLayout_6.addWidget(self.widget_shotclock, 5, 2, 1, 2)
         self._setShotclockControlsVisible(False)
 
     def _replaceLabelWithSpinBox(self, label_widget, minimum, maximum, suffix=""):
