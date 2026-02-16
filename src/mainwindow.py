@@ -546,10 +546,12 @@ class MainWindow(QMainWindow):
 
         boxes = config
         four_corners = None
+        vmix_api_plus = None
         # New format: {"boxes": [...], "four_corners": [[x,y], ...]}
         if isinstance(config, dict):
             boxes = config.get("boxes")
             four_corners = config.get("four_corners")
+            vmix_api_plus = config.get("vmix_api_plus")
 
         if not isinstance(boxes, list) or not self.detectionTargetsStorage.loadBoxesFromDict(boxes):
             logger.error("Error loading configuration file")
@@ -573,6 +575,26 @@ class MainWindow(QMainWindow):
                     self.image_viewer.setFourCorners(None)
                     self.ui.pushButton_fourCorner.setChecked(False)
 
+            if isinstance(vmix_api_plus, dict):
+                host = vmix_api_plus.get("host")
+                port = vmix_api_plus.get("port")
+                mapping = vmix_api_plus.get("mapping")
+                send_same = vmix_api_plus.get("send_same")
+
+                if isinstance(host, str):
+                    store_data("scoresight.json", "vmix_api_plus_host", host)
+                    if hasattr(self.vmixUiHandler, "lineEdit_vmixApiPlusHost"):
+                        self.vmixUiHandler.lineEdit_vmixApiPlusHost.setText(host)
+                if isinstance(port, str):
+                    store_data("scoresight.json", "vmix_api_plus_port", port)
+                    if hasattr(self.vmixUiHandler, "lineEdit_vmixApiPlusPort"):
+                        self.vmixUiHandler.lineEdit_vmixApiPlusPort.setText(port)
+                if isinstance(mapping, dict):
+                    store_data("scoresight.json", "vmix_api_plus_mapping", mapping)
+                if isinstance(send_same, bool):
+                    store_data("scoresight.json", "vmix_send_same", send_same)
+                    self.ui.checkBox_vmix_send_same.setChecked(send_same)
+
     def exportConfiguration(self):
         # open a file dialog to select the output file
         file, _ = QFileDialog.getSaveFileName(
@@ -583,6 +605,12 @@ class MainWindow(QMainWindow):
         config = {
             "boxes": self.detectionTargetsStorage.getBoxesForStorage(),
             "four_corners": fetch_data("scoresight.json", "four_corners"),
+            "vmix_api_plus": {
+                "host": fetch_data("scoresight.json", "vmix_api_plus_host", "localhost"),
+                "port": fetch_data("scoresight.json", "vmix_api_plus_port", "8088"),
+                "mapping": fetch_data("scoresight.json", "vmix_api_plus_mapping", {}),
+                "send_same": fetch_data("scoresight.json", "vmix_send_same", False),
+            },
         }
         with open(file, "w") as f:
             json.dump(config, f, indent=2)
