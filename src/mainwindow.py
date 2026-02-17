@@ -1407,6 +1407,8 @@ class MainWindow(QMainWindow):
             mapping = {}
         mapping[name] = vmix_field
         store_data("scoresight.json", "vmix_api_plus_mapping", mapping)
+        if self.vmixUiHandler.vmixApiPlusUpdater is not None:
+            self.vmixUiHandler.vmixApiPlusUpdater.set_field_mapping(mapping)
 
         if not self._applyPresetToTarget(name, int(preset_index)):
             self.pending_vmix_api_plus_presets[name] = int(preset_index)

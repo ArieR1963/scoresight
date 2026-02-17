@@ -398,6 +398,8 @@ class VMixUIHanlder:
         model.blockSignals(False)
         self.ui.tableView_vmixMapping.setModel(model)
         self.ui.tableView_vmixMapping.model().dataChanged.connect(self.vmixMappingChanged)
+        if self.vmixUpdater is not None:
+            self.vmixUpdater.set_field_mapping(mapping_storage)
 
         mapping_plus = fetch_data("scoresight.json", "vmix_api_plus_mapping", {})
         model_plus = QStandardItemModel()
@@ -416,6 +418,8 @@ class VMixUIHanlder:
         self.tableView_vmixApiPlusMapping.model().dataChanged.connect(
             self.vmixApiPlusMappingChanged
         )
+        if self.vmixApiPlusUpdater is not None:
+            self.vmixApiPlusUpdater.set_field_mapping(mapping_plus)
 
     def updatevMixOutputs(self, results: list[TextDetectionTargetWithResult]):
         if self.vmixUpdater is not None:
