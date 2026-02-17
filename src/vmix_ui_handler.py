@@ -309,9 +309,23 @@ class VMixUIHanlder:
             preset_index = preset_combo.currentData()
             if not isinstance(preset_index, int):
                 preset_index = 12
-            ok = self.add_target_callback(
-                target_name, field_name, int(preset_index), draw_box
-            )
+            if draw_box:
+                ok = self.add_target_callback(
+                    target_name, field_name, int(preset_index), False
+                )
+                if ok:
+                    dialog.accept()
+                    QTimer.singleShot(
+                        0,
+                        lambda: self.add_target_callback(
+                            target_name, field_name, int(preset_index), True
+                        ),
+                    )
+                else:
+                    status_label.setText("Could not add the target.")
+                return
+
+            ok = self.add_target_callback(target_name, field_name, int(preset_index), False)
             if ok:
                 status_label.setText(
                     f"Added '{target_name}' mapped to '{field_name}'."
