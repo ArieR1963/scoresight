@@ -3,7 +3,6 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
-    QDialogButtonBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -55,8 +54,9 @@ class VMixFieldDelegate(QStyledItemDelegate):
 
 
 class VMixUIHanlder:
-    def __init__(self, ui: Ui_MainWindow):
+    def __init__(self, ui: Ui_MainWindow, add_target_callback=None):
         self.ui = ui
+        self.add_target_callback = add_target_callback
         self.vmixUpdater = None
         self.vmixApiPlusUpdater = None
         self.vmixApiPlusConnected = False
@@ -212,19 +212,121 @@ class VMixUIHanlder:
     def _showVmixApiPlusFieldsPopup(self, fields: list[str]):
         dialog = QDialog(self.tab_vmix_api_plus)
         dialog.setWindowTitle("vMix API+ Fields")
-        dialog.setMinimumWidth(460)
+        dialog.setMinimumWidth(540)
         layout = QVBoxLayout(dialog)
         label = QLabel(
             f"Found {len(fields)} field names from /api (<text name=\"...\">).",
             dialog,
         )
         layout.addWidget(label)
+
         list_widget = QListWidget(dialog)
         list_widget.addItems(fields)
         layout.addWidget(list_widget)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok, dialog)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
+
+        target_row = QWidget(dialog)
+        target_layout = QHBoxLayout(target_row)
+        target_layout.setContentsMargins(0, 0, 0, 0)
+        target_layout.addWidget(QLabel("Target", target_row))
+        target_name_edit = QLineEdit(target_row)
+        target_layout.addWidget(target_name_edit)
+        target_layout.addWidget(QLabel("Preset", target_row))
+        preset_combo = QComboBox(target_row)
+        preset_names = [
+            self.ui.comboBox_formatPrefix.itemText(i)
+            for i in range(self.ui.comboBox_formatPrefix.count())
+        ]
+        for i, name in enumerate(preset_names):
+            preset_combo.addItem(name, i)
+        target_layout.addWidget(preset_combo)
+        layout.addWidget(target_row)
+
+        status_label = QLabel("", dialog)
+        layout.addWidget(status_label)
+
+        buttons_row = QWidget(dialog)
+        buttons_layout = QHBoxLayout(buttons_row)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        add_button = QPushButton("Add Target", buttons_row)
+        add_draw_button = QPushButton("Add + Draw Box", buttons_row)
+        close_button = QPushButton("Close", buttons_row)
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(add_draw_button)
+        buttons_layout.addStretch(1)
+        buttons_layout.addWidget(close_button)
+        layout.addWidget(buttons_row)
+
+        def suggest_from_field(field_name: str):
+            if not field_name:
+                return
+            plain = field_name.replace(".Text", "").replace(".TEXT", "")
+            upper = plain.upper()
+            if "HOME" in upper and "SCORE" in upper:
+                target_name_edit.setText("Home Score")
+                preset_combo.setCurrentIndex(5)
+                return
+            if ("AWAY" in upper or "GUEST" in upper) and "SCORE" in upper:
+                target_name_edit.setText("Away Score")
+                preset_combo.setCurrentIndex(5)
+                return
+            if "SHOT" in upper and "CLOCK" in upper:
+                target_name_edit.setText("Shot Clock")
+                preset_combo.setCurrentIndex(4)
+                return
+            if (
+                "TIME" in upper
+                or "CLOCK" in upper
+                or "MINUTE" in upper
+                or "SECOND" in upper
+            ):
+                target_name_edit.setText("Time")
+                preset_combo.setCurrentIndex(0)
+                return
+            if "PERIOD" in upper or "PART" in upper:
+                target_name_edit.setText("Period")
+                preset_combo.setCurrentIndex(7)
+                return
+
+            target_name_edit.setText(plain.replace("_", " ").strip().title())
+            preset_combo.setCurrentIndex(12)
+
+        def selected_field_name() -> str:
+            item = list_widget.currentItem()
+            return item.text().strip() if item is not None else ""
+
+        def add_selected(draw_box: bool):
+            if self.add_target_callback is None:
+                status_label.setText("Add callback is not available.")
+                return
+            field_name = selected_field_name()
+            if not field_name:
+                status_label.setText("Select a vMix field first.")
+                return
+            target_name = target_name_edit.text().strip()
+            if not target_name:
+                status_label.setText("Set a target name first.")
+                return
+            preset_index = preset_combo.currentData()
+            if not isinstance(preset_index, int):
+                preset_index = 12
+            ok = self.add_target_callback(
+                target_name, field_name, int(preset_index), draw_box
+            )
+            if ok:
+                status_label.setText(
+                    f"Added '{target_name}' mapped to '{field_name}'."
+                )
+            else:
+                status_label.setText("Could not add the target.")
+
+        list_widget.currentTextChanged.connect(lambda value: suggest_from_field(value))
+        add_button.clicked.connect(lambda: add_selected(False))
+        add_draw_button.clicked.connect(lambda: add_selected(True))
+        close_button.clicked.connect(dialog.accept)
+
+        if fields:
+            list_widget.setCurrentRow(0)
+
         dialog.exec()
 
     # -------- Shared --------
