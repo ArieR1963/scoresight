@@ -271,10 +271,10 @@ class VMixUIHanlder:
         self.lineEdit_vmixApiPlusPort.textChanged.connect(self.vmixApiPlusConnectionChanged)
         self.pushButton_fetchVmixApiPlusFields.clicked.connect(self.fetchVmixApiPlusFields)
         self.pushButton_startvmixApiPlus.toggled.connect(self.togglevMixApiPlus)
-        self.vmixApiPlusEnabled = fetch_data(
-            "scoresight.json", "vmix_api_plus_enabled", False
-        )
-        self.pushButton_startvmixApiPlus.setChecked(self.vmixApiPlusEnabled)
+        # Always boot with API+ disabled; user explicitly starts it.
+        self.vmixApiPlusEnabled = False
+        self.pushButton_startvmixApiPlus.setChecked(False)
+        self.globalSettingsChanged("vmix_api_plus_enabled", False)
         self.vmixApiPlusConnectionChanged()
         self._setApiPlusLed(self.vmixApiPlusEnabled)
         self.tableView_vmixApiPlusMapping.model().dataChanged.connect(self.vmixApiPlusMappingChanged)
