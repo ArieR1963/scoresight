@@ -4,6 +4,7 @@ from text_detection_target import TextDetectionTargetWithResult
 from sc_logging import logger
 from storage import subscribe_to_data, fetch_data
 from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 
 class VMixAPI:
@@ -21,6 +22,20 @@ class VMixAPI:
 
     def set_field_mapping(self, field_mapping):
         self.field_mapping = field_mapping
+
+    def _http_base(self) -> str:
+        raw_host = (self.host or "").strip()
+        if not raw_host:
+            return ""
+        if not raw_host.startswith(("http://", "https://")):
+            raw_host = f"http://{raw_host}"
+        parsed = urlparse(raw_host)
+        scheme = parsed.scheme or "http"
+        hostname = parsed.hostname
+        if not hostname:
+            return ""
+        port = parsed.port or int(self.port)
+        return f"{scheme}://{hostname}:{port}"
 
     def update_vmix(self, detection: list[TextDetectionTargetWithResult]):
         if not self.running:
@@ -47,6 +62,10 @@ class VMixAPI:
             return
 
         for key, value in data.items():
+            base = self._http_base()
+            if not base:
+                logger.error("Failed to build vMix URL from host/port")
+                return
             # Prepare the URL
             query = {
                 "Function": "SetText",
@@ -54,10 +73,10 @@ class VMixAPI:
                 "SelectedName": key,
                 "Value": value,
             }
-            url = f"http://{self.host}:{self.port}/api/?{urlencode(query)}"
+            url = f"{base}/api/?{urlencode(query)}"
             try:
                 # Send the request
-                response = requests.post(url, data=data)
+                response = requests.post(url, timeout=0.5)
 
                 # Check the response
                 if response.status_code != 200:
