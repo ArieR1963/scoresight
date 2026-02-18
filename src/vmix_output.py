@@ -2,6 +2,8 @@ import requests
 import socket
 import xml.etree.ElementTree as ET
 import time
+import queue
+import threading
 
 from text_detection_target import TextDetectionTargetWithResult
 from sc_logging import logger
@@ -30,6 +32,15 @@ class VMixAPI:
         self.running = False
         self._last_tcp_error_log_at = 0.0
         self._send_suspend_until = 0.0
+        self._send_queue: queue.Queue[list[tuple[str, str, str, str]]] = queue.Queue(
+            maxsize=1
+        )
+        self._send_worker_thread = threading.Thread(
+            target=self._send_worker_loop,
+            daemon=True,
+            name="vmix-send-worker",
+        )
+        self._send_worker_thread.start()
         self.update_same = fetch_data("scoresight.json", "vmix_send_same", False)
         subscribe_to_data("scoresight.json", "vmix_send_same", self.set_update_same)
 
@@ -189,6 +200,43 @@ class VMixAPI:
                 self._last_tcp_error_log_at = now
             self._send_suspend_until = time.time() + 0.5
             return False
+
+    def _enqueue_latest(self, commands: list[tuple[str, str, str, str]]):
+        # Keep only the newest payload to avoid latency buildup under bursty updates.
+        try:
+            self._send_queue.put_nowait(commands)
+            return
+        except queue.Full:
+            pass
+
+        try:
+            self._send_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+        try:
+            self._send_queue.put_nowait(commands)
+        except queue.Full:
+            # If producer races with worker, skip this frame and keep moving.
+            return
+
+    def _send_worker_loop(self):
+        while True:
+            try:
+                commands = self._send_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
+            if time.time() < self._send_suspend_until:
+                continue
+
+            for mode, key, value, input_number in commands:
+                if mode == "api_plus":
+                    if not self._send_settext_tcp(key, value, input_number):
+                        break
+                else:
+                    if not self._send_settext_http(key, value, input_number):
+                        break
         params = urlencode(
             {
                 "Input": input_number,
@@ -241,15 +289,14 @@ class VMixAPI:
         if time.time() < self._send_suspend_until:
             return
 
+        commands: list[tuple[str, str, str, str]] = []
         for key, value in data.items():
             input_numbers = self.field_input_map.get(key, [])
             if not input_numbers:
                 input_numbers = [str(self.input_number or "1")]
 
             for input_number in input_numbers:
-                if self.mode == "api_plus":
-                    if not self._send_settext_tcp(key, value, input_number):
-                        break
-                else:
-                    if not self._send_settext_http(key, value, input_number):
-                        break
+                commands.append((self.mode, key, value, str(input_number)))
+
+        if commands:
+            self._enqueue_latest(commands)
