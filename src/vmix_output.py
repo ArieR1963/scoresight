@@ -25,7 +25,7 @@ class VMixAPI:
         self.tcp_port = tcp_port
         self.input_number = input_number
         self.field_mapping = field_mapping
-        self.field_input_map: dict[str, str] = {}
+        self.field_input_map: dict[str, list[str]] = {}
         self.mode = mode
         self.running = False
         self._last_tcp_error_log_at = 0.0
@@ -39,7 +39,7 @@ class VMixAPI:
     def set_field_mapping(self, field_mapping):
         self.field_mapping = field_mapping
 
-    def set_field_input_map(self, field_input_map: dict[str, str]):
+    def set_field_input_map(self, field_input_map: dict[str, list[str]]):
         self.field_input_map = field_input_map or {}
 
     def _api_base_url(self) -> str:
@@ -126,7 +126,7 @@ class VMixAPI:
                     break
 
         field_names = set()
-        field_input_map = {}
+        field_input_map: dict[str, list[str]] = {}
         search_roots = [target_input] if target_input is not None else root.findall(
             ".//inputs/input"
         )
@@ -138,8 +138,12 @@ class VMixAPI:
                 name = text_elem.get("name")
                 if name:
                     field_names.add(name)
-                    if name not in field_input_map and input_ref:
-                        field_input_map[name] = str(input_ref)
+                    if input_ref:
+                        if name not in field_input_map:
+                            field_input_map[name] = []
+                        input_ref_str = str(input_ref)
+                        if input_ref_str not in field_input_map[name]:
+                            field_input_map[name].append(input_ref_str)
 
         fields = sorted(field_names)
         self.field_input_map = field_input_map
@@ -238,12 +242,14 @@ class VMixAPI:
             return
 
         for key, value in data.items():
-            input_number = str(
-                self.field_input_map.get(key) or self.input_number or "1"
-            )
-            if self.mode == "api_plus":
-                if not self._send_settext_tcp(key, value, input_number):
-                    break
-            else:
-                if not self._send_settext_http(key, value, input_number):
-                    break
+            input_numbers = self.field_input_map.get(key, [])
+            if not input_numbers:
+                input_numbers = [str(self.input_number or "1")]
+
+            for input_number in input_numbers:
+                if self.mode == "api_plus":
+                    if not self._send_settext_tcp(key, value, input_number):
+                        break
+                else:
+                    if not self._send_settext_http(key, value, input_number):
+                        break
