@@ -206,6 +206,10 @@ class MainWindow(QMainWindow):
         self.ui.toolButton_rotate.clicked.connect(self.rotateImage)
 
         self.ui.widget_detectionCadence.setVisible(True)
+        self.ui.label_detectionCadence.setText("- minimale latency    + meer latency")
+        self.ui.horizontalSlider_detectionCadence.setToolTip(
+            "Links = minimale latency, rechts = meer latency"
+        )
         self.ui.horizontalSlider_detectionCadence.setValue(
             fetch_data("scoresight.json", "detection_cadence", 5)
         )
