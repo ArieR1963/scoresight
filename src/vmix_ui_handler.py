@@ -1,5 +1,5 @@
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -59,12 +59,9 @@ class VMixUIHanlder:
         self.ui = ui
         self.vmixUpdater = None
         self.vmixApiPlusUpdater = None
-        self.vmixApiPlusConnected = False
+        self.vmixApiPlusEnabled = False
         self.vmixApiPlusFieldNames: list[str] = []
         self.vmixApiPlusDelegate = VMixFieldDelegate(self.vmixApiPlusFieldNames)
-        self._apiPlusProbeTimer = QTimer()
-        self._apiPlusProbeTimer.setSingleShot(True)
-        self._apiPlusProbeTimer.timeout.connect(self._probeVmixApiPlusConnection)
         self.vmixUiSetup()
 
     def globalSettingsChanged(self, settingName, value):
@@ -139,8 +136,11 @@ class VMixUIHanlder:
         h1.addWidget(self.lineEdit_vmixApiPlusPort)
         self.pushButton_fetchVmixApiPlusFields = QPushButton("Fetch Fields", row1)
         h1.addWidget(self.pushButton_fetchVmixApiPlusFields)
-        self.label_vmixApiPlusStatus = QLabel("● Disconnected", row1)
-        self.label_vmixApiPlusStatus.setStyleSheet("color:#d96f6f;")
+        self.pushButton_startvmixApiPlus = QPushButton("▶ Start", row1)
+        self.pushButton_startvmixApiPlus.setCheckable(True)
+        h1.addWidget(self.pushButton_startvmixApiPlus)
+        self.label_vmixApiPlusStatus = QLabel("● Off", row1)
+        self.label_vmixApiPlusStatus.setStyleSheet("color:#8a8a8a;")
         h1.addWidget(self.label_vmixApiPlusStatus)
         vbox.addWidget(row1)
 
@@ -164,11 +164,10 @@ class VMixUIHanlder:
             mode="api_plus",
             tcp_port="8099",
         )
-        self.vmixApiPlusUpdater.running = True
+        self.vmixApiPlusUpdater.running = self.vmixApiPlusEnabled
         self.globalSettingsChanged("vmix_api_plus_host", self.lineEdit_vmixApiPlusHost.text())
         self.globalSettingsChanged("vmix_api_plus_port", self.lineEdit_vmixApiPlusPort.text())
-        self._setApiPlusStatus(False)
-        self._apiPlusProbeTimer.start(350)
+        self._setApiPlusLed(self.vmixApiPlusEnabled)
 
     def vmixApiPlusMappingChanged(self, _):
         mapping = self._model_to_mapping(self.tableView_vmixApiPlusMapping.model())
@@ -176,27 +175,28 @@ class VMixUIHanlder:
         if self.vmixApiPlusUpdater:
             self.vmixApiPlusUpdater.set_field_mapping(mapping)
 
-    def _setApiPlusStatus(self, connected: bool):
-        self.vmixApiPlusConnected = connected
-        if connected:
-            self.label_vmixApiPlusStatus.setText("● Connected")
+    def _setApiPlusLed(self, enabled: bool):
+        self.vmixApiPlusEnabled = enabled
+        if enabled:
+            self.label_vmixApiPlusStatus.setText("● Running")
             self.label_vmixApiPlusStatus.setStyleSheet("color:#6bd67a;")
+            self.pushButton_startvmixApiPlus.setText("■ Stop")
         else:
-            self.label_vmixApiPlusStatus.setText("● Disconnected")
-            self.label_vmixApiPlusStatus.setStyleSheet("color:#d96f6f;")
+            self.label_vmixApiPlusStatus.setText("● Off")
+            self.label_vmixApiPlusStatus.setStyleSheet("color:#8a8a8a;")
+            self.pushButton_startvmixApiPlus.setText("▶ Start")
 
-    def _probeVmixApiPlusConnection(self):
-        if self.vmixApiPlusUpdater is None:
-            self._setApiPlusStatus(False)
-            return
-        self._setApiPlusStatus(self.vmixApiPlusUpdater.ping_api())
+    def togglevMixApiPlus(self, value: bool):
+        self._setApiPlusLed(value)
+        self.globalSettingsChanged("vmix_api_plus_enabled", value)
+        if self.vmixApiPlusUpdater is not None:
+            self.vmixApiPlusUpdater.running = value
 
     def fetchVmixApiPlusFields(self):
         if self.vmixApiPlusUpdater is None:
             return
         fields = self.vmixApiPlusUpdater.fetch_fields()
         if not fields:
-            self._setApiPlusStatus(False)
             QMessageBox.warning(
                 self.tab_vmix_api_plus,
                 "vMix API+",
@@ -206,7 +206,6 @@ class VMixUIHanlder:
         self.vmixApiPlusFieldNames = fields
         self.vmixApiPlusDelegate.set_field_names(fields)
         self.tableView_vmixApiPlusMapping.setItemDelegateForColumn(1, self.vmixApiPlusDelegate)
-        self._setApiPlusStatus(True)
         self._showVmixApiPlusFieldsPopup(fields)
 
     def _showVmixApiPlusFieldsPopup(self, fields: list[str]):
@@ -262,7 +261,13 @@ class VMixUIHanlder:
         self.lineEdit_vmixApiPlusHost.textChanged.connect(self.vmixApiPlusConnectionChanged)
         self.lineEdit_vmixApiPlusPort.textChanged.connect(self.vmixApiPlusConnectionChanged)
         self.pushButton_fetchVmixApiPlusFields.clicked.connect(self.fetchVmixApiPlusFields)
+        self.pushButton_startvmixApiPlus.toggled.connect(self.togglevMixApiPlus)
+        self.vmixApiPlusEnabled = fetch_data(
+            "scoresight.json", "vmix_api_plus_enabled", False
+        )
+        self.pushButton_startvmixApiPlus.setChecked(self.vmixApiPlusEnabled)
         self.vmixApiPlusConnectionChanged()
+        self._setApiPlusLed(self.vmixApiPlusEnabled)
         self.tableView_vmixApiPlusMapping.model().dataChanged.connect(self.vmixApiPlusMappingChanged)
 
         mapping_plus = fetch_data("scoresight.json", "vmix_api_plus_mapping", {})
@@ -304,5 +309,5 @@ class VMixUIHanlder:
     def updatevMixOutputs(self, results: list[TextDetectionTargetWithResult]):
         if self.vmixUpdater is not None:
             self.vmixUpdater.update_vmix(results)
-        if self.vmixApiPlusUpdater is not None and self.vmixApiPlusConnected:
+        if self.vmixApiPlusUpdater is not None and self.vmixApiPlusEnabled:
             self.vmixApiPlusUpdater.update_vmix(results)
