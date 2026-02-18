@@ -201,6 +201,31 @@ class VMixAPI:
             self._send_suspend_until = time.time() + 0.5
             return False
 
+        params = urlencode(
+            {
+                "Input": input_number,
+                "SelectedName": key,
+                "Value": value,
+            }
+        )
+        command = f"FUNCTION SetText {params}\r\n".encode("utf-8")
+        try:
+            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
+                s.sendall(command)
+            return True
+        except OSError as e:
+            now = time.time()
+            if now - self._last_tcp_error_log_at > 2.0:
+                logger.error(
+                    "Failed to send vMix TCP command to %s:%s: %s",
+                    socket_host,
+                    self.tcp_port,
+                    e,
+                )
+                self._last_tcp_error_log_at = now
+            self._send_suspend_until = time.time() + 0.5
+            return False
+
     def _enqueue_latest(self, commands: list[tuple[str, str, str, str]]):
         # Keep only the newest payload to avoid latency buildup under bursty updates.
         try:
@@ -237,30 +262,6 @@ class VMixAPI:
                 else:
                     if not self._send_settext_http(key, value, input_number):
                         break
-        params = urlencode(
-            {
-                "Input": input_number,
-                "SelectedName": key,
-                "Value": value,
-            }
-        )
-        command = f"FUNCTION SetText {params}\r\n".encode("utf-8")
-        try:
-            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
-                s.sendall(command)
-            return True
-        except OSError as e:
-            now = time.time()
-            if now - self._last_tcp_error_log_at > 2.0:
-                logger.error(
-                    "Failed to send vMix TCP command to %s:%s: %s",
-                    socket_host,
-                    self.tcp_port,
-                    e,
-                )
-                self._last_tcp_error_log_at = now
-            self._send_suspend_until = time.time() + 0.5
-            return False
 
     def update_vmix(self, detection: list[TextDetectionTargetWithResult]):
         if not self.running:
