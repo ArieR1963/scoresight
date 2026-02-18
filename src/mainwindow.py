@@ -1196,8 +1196,7 @@ class MainWindow(QMainWindow):
             update_out_api(results)
 
         # update vmix and uno
-        if self.vmixUiHandler.vmixUpdater is not None:
-            self.vmixUiHandler.vmixUpdater.update_vmix(results)
+        self.vmixUiHandler.updatevMixOutputs(results)
         if self.unoUiHandler.unoUpdater is not None:
             self.unoUiHandler.unoUpdater.update_uno(results)
 
