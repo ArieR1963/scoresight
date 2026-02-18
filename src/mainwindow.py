@@ -43,10 +43,6 @@ from source_view import ImageViewer
 from defaults import (
     default_boxes,
     default_info_for_box_name,
-    format_prefixes,
-    NUMBER_BASELINE,
-    TIME_BASELINE,
-    TEXT_BASELINE,
     normalize_settings_dict,
     FieldType,
 )
@@ -106,7 +102,6 @@ class MainWindow(QMainWindow):
         logger.info("Starting ScoreSight")
         self.ui.setupUi(self)
         self.auto_tune_states = {}
-        self.pending_vmix_api_plus_presets = {}
         self._auto_enable_binary_after_four_corners = False
         self._set_auto_tune_status("idle")
         self.ui.pushButton_autoTuneStatus.clicked.connect(self.rerunAutoTuneSelected)
@@ -162,7 +157,7 @@ class MainWindow(QMainWindow):
 
         self.ui.pushButton_connectObs.clicked.connect(self.openOBSConnectModal)
 
-        self.vmixUiHandler = VMixUIHanlder(self.ui, self.addTargetFromVmixApiPlusField)
+        self.vmixUiHandler = VMixUIHanlder(self.ui)
         self.unoUiHandler = UNOUIHandler(self.ui)
         self.boxSettingsUiHandler = BoxSettingsUIHandler(self.ui)
 
@@ -551,12 +546,10 @@ class MainWindow(QMainWindow):
 
         boxes = config
         four_corners = None
-        vmix_api_plus = None
         # New format: {"boxes": [...], "four_corners": [[x,y], ...]}
         if isinstance(config, dict):
             boxes = config.get("boxes")
             four_corners = config.get("four_corners")
-            vmix_api_plus = config.get("vmix_api_plus")
 
         if not isinstance(boxes, list) or not self.detectionTargetsStorage.loadBoxesFromDict(boxes):
             logger.error("Error loading configuration file")
@@ -580,26 +573,6 @@ class MainWindow(QMainWindow):
                     self.image_viewer.setFourCorners(None)
                     self.ui.pushButton_fourCorner.setChecked(False)
 
-            if isinstance(vmix_api_plus, dict):
-                host = vmix_api_plus.get("host")
-                port = vmix_api_plus.get("port")
-                mapping = vmix_api_plus.get("mapping")
-                send_same = vmix_api_plus.get("send_same")
-
-                if isinstance(host, str):
-                    store_data("scoresight.json", "vmix_api_plus_host", host)
-                    if hasattr(self.vmixUiHandler, "lineEdit_vmixApiPlusHost"):
-                        self.vmixUiHandler.lineEdit_vmixApiPlusHost.setText(host)
-                if isinstance(port, str):
-                    store_data("scoresight.json", "vmix_api_plus_port", port)
-                    if hasattr(self.vmixUiHandler, "lineEdit_vmixApiPlusPort"):
-                        self.vmixUiHandler.lineEdit_vmixApiPlusPort.setText(port)
-                if isinstance(mapping, dict):
-                    store_data("scoresight.json", "vmix_api_plus_mapping", mapping)
-                if isinstance(send_same, bool):
-                    store_data("scoresight.json", "vmix_send_same", send_same)
-                    self.ui.checkBox_vmix_send_same.setChecked(send_same)
-
     def exportConfiguration(self):
         # open a file dialog to select the output file
         file, _ = QFileDialog.getSaveFileName(
@@ -610,12 +583,6 @@ class MainWindow(QMainWindow):
         config = {
             "boxes": self.detectionTargetsStorage.getBoxesForStorage(),
             "four_corners": fetch_data("scoresight.json", "four_corners"),
-            "vmix_api_plus": {
-                "host": fetch_data("scoresight.json", "vmix_api_plus_host", "localhost"),
-                "port": fetch_data("scoresight.json", "vmix_api_plus_port", "8088"),
-                "mapping": fetch_data("scoresight.json", "vmix_api_plus_mapping", {}),
-                "send_same": fetch_data("scoresight.json", "vmix_send_same", False),
-            },
         }
         with open(file, "w") as f:
             json.dump(config, f, indent=2)
@@ -1229,7 +1196,8 @@ class MainWindow(QMainWindow):
             update_out_api(results)
 
         # update vmix and uno
-        self.vmixUiHandler.updatevMixOutputs(results)
+        if self.vmixUiHandler.vmixUpdater is not None:
+            self.vmixUiHandler.vmixUpdater.update_vmix(results)
         if self.unoUiHandler.unoUpdater is not None:
             self.unoUiHandler.unoUpdater.update_uno(results)
 
@@ -1332,91 +1300,6 @@ class MainWindow(QMainWindow):
             self.ui.tableWidget_boxes.rowCount() - 1, 1, disabledItem
         )
 
-    def _ensureTargetInList(self, target_name: str):
-        items = self.ui.tableWidget_boxes.findItems(target_name, Qt.MatchFlag.MatchExactly)
-        if len(items) > 0:
-            return items[0]
-
-        if target_name not in [o["name"] for o in default_boxes]:
-            existing_custom = fetch_custom_box_names()
-            if target_name not in existing_custom:
-                store_custom_box_name(target_name)
-
-        item = QTableWidgetItem(
-            QIcon(resource_path("icons", "circle-x.svg")),
-            target_name,
-        )
-        item.setData(Qt.ItemDataRole.UserRole, "unchecked")
-        self.ui.tableWidget_boxes.insertRow(self.ui.tableWidget_boxes.rowCount())
-        self.ui.tableWidget_boxes.setItem(
-            self.ui.tableWidget_boxes.rowCount() - 1, 0, item
-        )
-        disabledItem = QTableWidgetItem()
-        disabledItem.setFlags(Qt.ItemFlag.NoItemFlags)
-        self.ui.tableWidget_boxes.setItem(
-            self.ui.tableWidget_boxes.rowCount() - 1, 1, disabledItem
-        )
-        return item
-
-    def _fieldTypeForPreset(self, preset_index: int) -> int:
-        if preset_index in [0, 1, 2, 3]:
-            return FieldType.TIME
-        if preset_index in [9, 10]:
-            return FieldType.TEXT
-        return FieldType.NUMBER
-
-    def _applyPresetToTarget(self, target_name: str, preset_index: int):
-        item_obj = self.detectionTargetsStorage.find_item_by_name(target_name)
-        if item_obj is None:
-            return False
-
-        settings = dict(item_obj.settings or {})
-        preset_index = (
-            preset_index
-            if isinstance(preset_index, int) and 0 <= preset_index < len(format_prefixes)
-            else 12
-        )
-        field_type = self._fieldTypeForPreset(preset_index)
-        baseline = NUMBER_BASELINE
-        if field_type == FieldType.TIME:
-            baseline = TIME_BASELINE
-        elif field_type == FieldType.TEXT:
-            baseline = TEXT_BASELINE
-
-        settings.update(baseline)
-        settings["type"] = field_type
-        settings["format_regex"] = format_prefixes[preset_index]
-        item_obj.settings = settings
-        self.detectionTargetsStorage.edit_item(target_name, item_obj)
-        return True
-
-    def addTargetFromVmixApiPlusField(
-        self, target_name: str, field_name: str, preset_index: int, draw_box: bool
-    ) -> bool:
-        name = (target_name or "").strip()
-        vmix_field = (field_name or "").strip()
-        if not name or not vmix_field:
-            return False
-
-        row_item = self._ensureTargetInList(name)
-        self.ui.tableWidget_boxes.setCurrentItem(row_item)
-        self.listItemClicked(row_item)
-
-        mapping = fetch_data("scoresight.json", "vmix_api_plus_mapping", {})
-        if not isinstance(mapping, dict):
-            mapping = {}
-        mapping[name] = vmix_field
-        store_data("scoresight.json", "vmix_api_plus_mapping", mapping)
-        if self.vmixUiHandler.vmixApiPlusUpdater is not None:
-            self.vmixUiHandler.vmixApiPlusUpdater.set_field_mapping(mapping)
-
-        if not self._applyPresetToTarget(name, int(preset_index)):
-            self.pending_vmix_api_plus_presets[name] = int(preset_index)
-
-        if draw_box:
-            self.makeBox()
-        return True
-
     def removeCustomBox(self):
         item = self.ui.tableWidget_boxes.currentItem()
         if not item:
@@ -1501,10 +1384,6 @@ class MainWindow(QMainWindow):
             existing_item.setWidth(rect.width())
             existing_item.setHeight(rect.height())
             self.detectionTargetsStorage.edit_item(item_name, existing_item)
-
-        pending_preset_index = self.pending_vmix_api_plus_presets.pop(item_name, None)
-        if pending_preset_index is not None:
-            self._applyPresetToTarget(item_name, int(pending_preset_index))
 
         self._auto_tune_start(item_name)
 
