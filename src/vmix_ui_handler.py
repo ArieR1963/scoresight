@@ -191,22 +191,31 @@ class VMixUIHanlder:
         self.globalSettingsChanged("vmix_api_plus_enabled", value)
         if self.vmixApiPlusUpdater is not None:
             self.vmixApiPlusUpdater.running = value
+            if value:
+                # Refresh field/input map on start so imported configs don't need
+                # a manual fetch before updates go out.
+                self._refreshVmixApiPlusFields(show_popup=False)
 
     def fetchVmixApiPlusFields(self):
+        self._refreshVmixApiPlusFields(show_popup=True)
+
+    def _refreshVmixApiPlusFields(self, show_popup: bool = False):
         if self.vmixApiPlusUpdater is None:
             return
         fields = self.vmixApiPlusUpdater.fetch_fields()
         if not fields:
-            QMessageBox.warning(
-                self.tab_vmix_api_plus,
-                "vMix API+",
-                "No text fields found. Check host/port and try again.",
-            )
+            if show_popup:
+                QMessageBox.warning(
+                    self.tab_vmix_api_plus,
+                    "vMix API+",
+                    "No text fields found. Check host/port and try again.",
+                )
             return
         self.vmixApiPlusFieldNames = fields
         self.vmixApiPlusDelegate.set_field_names(fields)
         self.tableView_vmixApiPlusMapping.setItemDelegateForColumn(1, self.vmixApiPlusDelegate)
-        self._showVmixApiPlusFieldsPopup(fields)
+        if show_popup:
+            self._showVmixApiPlusFieldsPopup(fields)
 
     def _showVmixApiPlusFieldsPopup(self, fields: list[str]):
         dialog = QDialog(self.tab_vmix_api_plus)

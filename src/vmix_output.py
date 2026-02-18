@@ -201,6 +201,47 @@ class VMixAPI:
             self._send_suspend_until = time.time() + 0.5
             return False
 
+    def _send_settext_tcp_batch(
+        self, input_number: str, field_values: list[tuple[str, str]]
+    ) -> bool:
+        socket_host = self._socket_host()
+        if not socket_host:
+            now = time.time()
+            if now - self._last_tcp_error_log_at > 2.0:
+                logger.error("Failed to build vMix TCP host from host/port")
+                self._last_tcp_error_log_at = now
+            self._send_suspend_until = time.time() + 0.5
+            return False
+
+        lines = []
+        for key, value in field_values:
+            params = urlencode(
+                {
+                    "Input": input_number,
+                    "SelectedName": key,
+                    "Value": value,
+                }
+            )
+            lines.append(f"FUNCTION SetText {params}\r\n")
+        payload = "".join(lines).encode("utf-8")
+
+        try:
+            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
+                s.sendall(payload)
+            return True
+        except OSError as e:
+            now = time.time()
+            if now - self._last_tcp_error_log_at > 2.0:
+                logger.error(
+                    "Failed to send vMix TCP batch to %s:%s: %s",
+                    socket_host,
+                    self.tcp_port,
+                    e,
+                )
+                self._last_tcp_error_log_at = now
+            self._send_suspend_until = time.time() + 0.5
+            return False
+
         params = urlencode(
             {
                 "Input": input_number,
@@ -253,6 +294,15 @@ class VMixAPI:
                 continue
 
             if time.time() < self._send_suspend_until:
+                continue
+
+            if all(mode == "api_plus" for mode, _, _, _ in commands):
+                by_input: dict[str, list[tuple[str, str]]] = {}
+                for _, key, value, input_number in commands:
+                    by_input.setdefault(input_number, []).append((key, value))
+                for input_number, field_values in by_input.items():
+                    if not self._send_settext_tcp_batch(input_number, field_values):
+                        break
                 continue
 
             for mode, key, value, input_number in commands:
