@@ -1,6 +1,7 @@
 import requests
 import socket
 import xml.etree.ElementTree as ET
+import time
 
 from text_detection_target import TextDetectionTargetWithResult
 from sc_logging import logger
@@ -27,6 +28,7 @@ class VMixAPI:
         self.field_input_map: dict[str, str] = {}
         self.mode = mode
         self.running = False
+        self._last_tcp_error_log_at = 0.0
         self.update_same = fetch_data("scoresight.json", "vmix_send_same", False)
         subscribe_to_data("scoresight.json", "vmix_send_same", self.set_update_same)
 
@@ -63,6 +65,23 @@ class VMixAPI:
         if not base:
             return ""
         return f"{base}/api"
+
+    def _socket_host(self) -> str:
+        raw_host = (self.host or "").strip()
+        if not raw_host:
+            return ""
+
+        if not raw_host.startswith(("http://", "https://")):
+            raw_host = f"http://{raw_host}"
+
+        parsed = urlparse(raw_host)
+        if parsed.hostname:
+            return parsed.hostname
+
+        netloc = parsed.netloc or parsed.path
+        if not netloc:
+            return ""
+        return netloc.split("/")[0].split(":")[0]
 
     def ping_api(self) -> bool:
         url = self._api_url()
@@ -151,6 +170,13 @@ class VMixAPI:
             logger.error(f"Failed to send data to {url}: {e}")
 
     def _send_settext_tcp(self, key: str, value: str, input_number: str):
+        socket_host = self._socket_host()
+        if not socket_host:
+            now = time.time()
+            if now - self._last_tcp_error_log_at > 2.0:
+                logger.error("Failed to build vMix TCP host from host/port")
+                self._last_tcp_error_log_at = now
+            return
         params = urlencode(
             {
                 "Input": input_number,
@@ -160,15 +186,18 @@ class VMixAPI:
         )
         command = f"FUNCTION SetText {params}\r\n".encode("utf-8")
         try:
-            with socket.create_connection((self.host, int(self.tcp_port)), timeout=2) as s:
+            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=2) as s:
                 s.sendall(command)
         except OSError as e:
-            logger.error(
-                "Failed to send vMix TCP command to %s:%s: %s",
-                self.host,
-                self.tcp_port,
-                e,
-            )
+            now = time.time()
+            if now - self._last_tcp_error_log_at > 2.0:
+                logger.error(
+                    "Failed to send vMix TCP command to %s:%s: %s",
+                    socket_host,
+                    self.tcp_port,
+                    e,
+                )
+                self._last_tcp_error_log_at = now
 
     def update_vmix(self, detection: list[TextDetectionTargetWithResult]):
         if not self.running:
