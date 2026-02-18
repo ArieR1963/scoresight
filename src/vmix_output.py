@@ -29,6 +29,7 @@ class VMixAPI:
         self.mode = mode
         self.running = False
         self._last_tcp_error_log_at = 0.0
+        self._send_suspend_until = 0.0
         self.update_same = fetch_data("scoresight.json", "vmix_send_same", False)
         subscribe_to_data("scoresight.json", "vmix_send_same", self.set_update_same)
 
@@ -150,11 +151,12 @@ class VMixAPI:
             )
         return fields
 
-    def _send_settext_http(self, key: str, value: str, input_number: str):
+    def _send_settext_http(self, key: str, value: str, input_number: str) -> bool:
         api_url = self._api_url()
         if not api_url:
             logger.error("Failed to build vMix API URL from host/port")
-            return
+            self._send_suspend_until = time.time() + 0.5
+            return False
         query = {
             "Function": "SetText",
             "Input": input_number,
@@ -163,20 +165,26 @@ class VMixAPI:
         }
         url = f"{api_url}/?{urlencode(query)}"
         try:
-            response = requests.post(url, timeout=2)
+            response = requests.post(url, timeout=0.35)
             if response.status_code != 200:
                 logger.error(f"Failed to send data, status code: {response.status_code}")
+                self._send_suspend_until = time.time() + 0.5
+                return False
+            return True
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send data to {url}: {e}")
+            self._send_suspend_until = time.time() + 0.5
+            return False
 
-    def _send_settext_tcp(self, key: str, value: str, input_number: str):
+    def _send_settext_tcp(self, key: str, value: str, input_number: str) -> bool:
         socket_host = self._socket_host()
         if not socket_host:
             now = time.time()
             if now - self._last_tcp_error_log_at > 2.0:
                 logger.error("Failed to build vMix TCP host from host/port")
                 self._last_tcp_error_log_at = now
-            return
+            self._send_suspend_until = time.time() + 0.5
+            return False
         params = urlencode(
             {
                 "Input": input_number,
@@ -186,8 +194,9 @@ class VMixAPI:
         )
         command = f"FUNCTION SetText {params}\r\n".encode("utf-8")
         try:
-            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=2) as s:
+            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
                 s.sendall(command)
+            return True
         except OSError as e:
             now = time.time()
             if now - self._last_tcp_error_log_at > 2.0:
@@ -198,6 +207,8 @@ class VMixAPI:
                     e,
                 )
                 self._last_tcp_error_log_at = now
+            self._send_suspend_until = time.time() + 0.5
+            return False
 
     def update_vmix(self, detection: list[TextDetectionTargetWithResult]):
         if not self.running:
@@ -223,11 +234,16 @@ class VMixAPI:
             logger.debug("No data to send")
             return
 
+        if time.time() < self._send_suspend_until:
+            return
+
         for key, value in data.items():
             input_number = str(
                 self.field_input_map.get(key) or self.input_number or "1"
             )
             if self.mode == "api_plus":
-                self._send_settext_tcp(key, value, input_number)
+                if not self._send_settext_tcp(key, value, input_number):
+                    break
             else:
-                self._send_settext_http(key, value, input_number)
+                if not self._send_settext_http(key, value, input_number):
+                    break
