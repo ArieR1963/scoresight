@@ -598,9 +598,10 @@ class MainWindow(QMainWindow):
                     if self.vmixUiHandler.vmixApiPlusUpdater is not None:
                         self.vmixUiHandler.vmixApiPlusUpdater.set_field_mapping(mapping)
                 if isinstance(enabled, bool):
-                    store_data("scoresight.json", "vmix_api_plus_enabled", enabled)
+                    # API+ must always be started manually after import.
+                    store_data("scoresight.json", "vmix_api_plus_enabled", False)
                     if hasattr(self.vmixUiHandler, "pushButton_startvmixApiPlus"):
-                        self.vmixUiHandler.pushButton_startvmixApiPlus.setChecked(enabled)
+                        self.vmixUiHandler.pushButton_startvmixApiPlus.setChecked(False)
 
                 # Ensure mapping tables reflect imported settings immediately.
                 self.vmixUiHandler.updatevMixTable(self.detectionTargetsStorage.get_data())

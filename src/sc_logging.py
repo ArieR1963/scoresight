@@ -58,20 +58,26 @@ def setup_logging():
         logger.addHandler(console_handler)
         logger.debug("Debug mode enabled")
 
-    # check to see if there are more log files, and only keep the most recent 10
-    log_files = [
-        f
-        for f in os.listdir(data_dir)
-        if f.startswith("scoresight_") and f.endswith(".log")
-    ]
-    # sort log files by date
-    log_files.sort()
-    if len(log_files) > 10:
-        for f in log_files[:-10]:
-            try:
-                os.remove(os.path.join(data_dir, f))
-            except PermissionError as e:
-                logger.error(f"Failed to remove log file: {f}")
+    # keep only a bounded number of recent log files by mtime
+    # (name-based sorting could delete the active ui log file).
+    log_files_with_mtime = []
+    for f in os.listdir(data_dir):
+        if not f.startswith("scoresight_") or not f.endswith(".log"):
+            continue
+        full_path = os.path.join(data_dir, f)
+        try:
+            mtime = os.path.getmtime(full_path)
+            log_files_with_mtime.append((f, mtime))
+        except OSError:
+            continue
+
+    log_files_with_mtime.sort(key=lambda item: item[1], reverse=True)
+    files_to_delete = [f for f, _ in log_files_with_mtime[20:]]
+    for f in files_to_delete:
+        try:
+            os.remove(os.path.join(data_dir, f))
+        except PermissionError:
+            logger.error(f"Failed to remove log file: {f}")
 
     return logger, file_handler, log_file_path
 

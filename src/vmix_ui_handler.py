@@ -69,6 +69,13 @@ class VMixUIHanlder:
 
     # -------- Legacy vMix --------
     def vmixConnectionChanged(self):
+        previous_mapping = {}
+        if self.vmixUpdater and self.vmixUpdater.field_mapping:
+            previous_mapping = dict(self.vmixUpdater.field_mapping)
+        else:
+            previous_mapping = fetch_data("scoresight.json", "vmix_mapping", {}) or {}
+        should_run = self.ui.pushButton_startvmix.isChecked()
+
         self.vmixUpdater = VMixAPI(
             self.ui.lineEdit_vmixHost.text(),
             self.ui.lineEdit_vmixPort.text(),
@@ -76,6 +83,10 @@ class VMixUIHanlder:
             {},
             mode="legacy_http",
         )
+        self.vmixUpdater.set_field_mapping(previous_mapping)
+        self.vmixUpdater.running = should_run
+        if should_run:
+            self.vmixUpdater.request_force_send()
         self.globalSettingsChanged("vmix_host", self.ui.lineEdit_vmixHost.text())
         self.globalSettingsChanged("vmix_port", self.ui.lineEdit_vmixPort.text())
         self.globalSettingsChanged("vmix_input", self.ui.inputLineEdit_vmix.text())
@@ -91,6 +102,8 @@ class VMixUIHanlder:
             return
         self._setLegacyVmixLed(value)
         self.vmixUpdater.running = value
+        if value:
+            self.vmixUpdater.request_force_send()
 
     def _setLegacyVmixLed(self, enabled: bool):
         if not hasattr(self, "label_vmixLegacyStatus"):
@@ -164,6 +177,12 @@ class VMixUIHanlder:
             self.ui.tabWidget_outputs.addTab(self.tab_vmix_api_plus, "vMix API+")
 
     def vmixApiPlusConnectionChanged(self):
+        previous_mapping = {}
+        if self.vmixApiPlusUpdater and self.vmixApiPlusUpdater.field_mapping:
+            previous_mapping = dict(self.vmixApiPlusUpdater.field_mapping)
+        else:
+            previous_mapping = fetch_data("scoresight.json", "vmix_api_plus_mapping", {}) or {}
+
         self.vmixApiPlusUpdater = VMixAPI(
             self.lineEdit_vmixApiPlusHost.text(),
             self.lineEdit_vmixApiPlusPort.text(),
@@ -172,7 +191,10 @@ class VMixUIHanlder:
             mode="api_plus",
             tcp_port="8099",
         )
+        self.vmixApiPlusUpdater.set_field_mapping(previous_mapping)
         self.vmixApiPlusUpdater.running = self.vmixApiPlusEnabled
+        if self.vmixApiPlusEnabled:
+            self.vmixApiPlusUpdater.request_force_send()
         self.globalSettingsChanged("vmix_api_plus_host", self.lineEdit_vmixApiPlusHost.text())
         self.globalSettingsChanged("vmix_api_plus_port", self.lineEdit_vmixApiPlusPort.text())
         self._setApiPlusLed(self.vmixApiPlusEnabled)
@@ -200,9 +222,11 @@ class VMixUIHanlder:
         if self.vmixApiPlusUpdater is not None:
             self.vmixApiPlusUpdater.running = value
             if value:
-                # Refresh field/input map on start so imported configs don't need
-                # a manual fetch before updates go out.
-                self._refreshVmixApiPlusFields(show_popup=False)
+                self.vmixApiPlusUpdater.request_force_send()
+                # Avoid blocking start/stop with repeated API fetches.
+                # Fetch once when no field-input map exists yet (fresh app/import).
+                if not self.vmixApiPlusUpdater.field_input_map:
+                    self._refreshVmixApiPlusFields(show_popup=False)
 
     def fetchVmixApiPlusFields(self):
         self._refreshVmixApiPlusFields(show_popup=True)

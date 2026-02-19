@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import time
 import queue
 import threading
+import os
 
 from text_detection_target import TextDetectionTargetWithResult
 from sc_logging import logger
@@ -42,16 +43,64 @@ class VMixAPI:
         )
         self._send_worker_thread.start()
         self.update_same = fetch_data("scoresight.json", "vmix_send_same", False)
+        self.force_next_send = False
+        self._timing_debug = (
+            mode == "api_plus" and os.getenv("SCORESIGHT_VMIX_API_DEBUG", "0") == "1"
+        )
+        self._debug_last_summary_at = time.time()
+        self._debug_last_update_at = 0.0
+        self._debug_last_send_ok_at = 0.0
+        self._debug_last_send_ms = 0.0
+        self._debug_updates = 0
+        self._debug_enqueues = 0
+        self._debug_queue_drops = 0
+        self._debug_send_ok = 0
+        self._debug_send_fail = 0
+        self._debug_last_error = ""
+        self._api_plus_http_only_until = 0.0
+        self._api_plus_last_send_at = 0.0
+        self._api_plus_min_send_interval = 0.15
         subscribe_to_data("scoresight.json", "vmix_send_same", self.set_update_same)
 
     def set_update_same(self, update_same):
         self.update_same = update_same
+
+    def request_force_send(self):
+        self.force_next_send = True
 
     def set_field_mapping(self, field_mapping):
         self.field_mapping = field_mapping
 
     def set_field_input_map(self, field_input_map: dict[str, list[str]]):
         self.field_input_map = field_input_map or {}
+
+    def _debug_timing_summary(self):
+        if not self._timing_debug:
+            return
+        now = time.time()
+        if now - self._debug_last_summary_at < 2.0:
+            return
+        since_ok = (
+            now - self._debug_last_send_ok_at if self._debug_last_send_ok_at > 0 else -1.0
+        )
+        logger.info(
+            "vMix API+ debug: upd=%d enq=%d ok=%d fail=%d drop=%d last_send=%.1fms last_ok=%.2fs ago last_error=%s",
+            self._debug_updates,
+            self._debug_enqueues,
+            self._debug_send_ok,
+            self._debug_send_fail,
+            self._debug_queue_drops,
+            self._debug_last_send_ms,
+            since_ok,
+            self._debug_last_error or "-",
+        )
+        self._debug_last_summary_at = now
+        self._debug_updates = 0
+        self._debug_enqueues = 0
+        self._debug_send_ok = 0
+        self._debug_send_fail = 0
+        self._debug_queue_drops = 0
+        self._debug_last_error = ""
 
     def _api_base_url(self) -> str:
         raw_host = (self.host or "").strip()
@@ -166,11 +215,14 @@ class VMixAPI:
             )
         return fields
 
-    def _send_settext_http(self, key: str, value: str, input_number: str) -> bool:
+    def _send_settext_http(
+        self, key: str, value: str, input_number: str, apply_backoff: bool = True
+    ) -> bool:
         api_url = self._api_url()
         if not api_url:
             logger.error("Failed to build vMix API URL from host/port")
-            self._send_suspend_until = time.time() + 0.5
+            if apply_backoff:
+                self._send_suspend_until = time.time() + 0.5
             return False
         query = {
             "Function": "SetText",
@@ -183,12 +235,14 @@ class VMixAPI:
             response = requests.post(url, timeout=0.35)
             if response.status_code != 200:
                 logger.error(f"Failed to send data, status code: {response.status_code}")
-                self._send_suspend_until = time.time() + 0.5
+                if apply_backoff:
+                    self._send_suspend_until = time.time() + 0.5
                 return False
             return True
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send data to {url}: {e}")
-            self._send_suspend_until = time.time() + 0.5
+            if apply_backoff:
+                self._send_suspend_until = time.time() + 0.5
             return False
 
     def _send_settext_tcp(self, key: str, value: str, input_number: str) -> bool:
@@ -202,7 +256,10 @@ class VMixAPI:
             return False
 
     def _send_settext_tcp_batch(
-        self, input_number: str, field_values: list[tuple[str, str]]
+        self,
+        input_number: str,
+        field_values: list[tuple[str, str]],
+        apply_backoff: bool = True,
     ) -> bool:
         socket_host = self._socket_host()
         if not socket_host:
@@ -210,7 +267,8 @@ class VMixAPI:
             if now - self._last_tcp_error_log_at > 2.0:
                 logger.error("Failed to build vMix TCP host from host/port")
                 self._last_tcp_error_log_at = now
-            self._send_suspend_until = time.time() + 0.5
+            if apply_backoff:
+                self._send_suspend_until = time.time() + 0.5
             return False
 
         lines = []
@@ -226,7 +284,7 @@ class VMixAPI:
         payload = "".join(lines).encode("utf-8")
 
         try:
-            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
+            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.8) as s:
                 s.sendall(payload)
             return True
         except OSError as e:
@@ -239,51 +297,48 @@ class VMixAPI:
                     e,
                 )
                 self._last_tcp_error_log_at = now
-            self._send_suspend_until = time.time() + 0.5
+            if apply_backoff:
+                self._send_suspend_until = time.time() + 0.5
             return False
 
-        params = urlencode(
-            {
-                "Input": input_number,
-                "SelectedName": key,
-                "Value": value,
-            }
-        )
-        command = f"FUNCTION SetText {params}\r\n".encode("utf-8")
-        try:
-            with socket.create_connection((socket_host, int(self.tcp_port)), timeout=0.35) as s:
-                s.sendall(command)
-            return True
-        except OSError as e:
-            now = time.time()
-            if now - self._last_tcp_error_log_at > 2.0:
-                logger.error(
-                    "Failed to send vMix TCP command to %s:%s: %s",
-                    socket_host,
-                    self.tcp_port,
-                    e,
-                )
-                self._last_tcp_error_log_at = now
-            self._send_suspend_until = time.time() + 0.5
-            return False
+    def _send_settext_http_batch(
+        self,
+        input_number: str,
+        field_values: list[tuple[str, str]],
+        apply_backoff: bool = True,
+    ) -> bool:
+        for key, value in field_values:
+            if not self._send_settext_http(
+                key, value, input_number, apply_backoff=apply_backoff
+            ):
+                return False
+        return True
 
     def _enqueue_latest(self, commands: list[tuple[str, str, str, str]]):
         # Keep only the newest payload to avoid latency buildup under bursty updates.
         try:
             self._send_queue.put_nowait(commands)
+            if self._timing_debug:
+                self._debug_enqueues += 1
             return
         except queue.Full:
             pass
 
         try:
             self._send_queue.get_nowait()
+            if self._timing_debug:
+                self._debug_queue_drops += 1
         except queue.Empty:
             pass
 
         try:
             self._send_queue.put_nowait(commands)
+            if self._timing_debug:
+                self._debug_enqueues += 1
         except queue.Full:
             # If producer races with worker, skip this frame and keep moving.
+            if self._timing_debug:
+                self._debug_queue_drops += 1
             return
 
     def _send_worker_loop(self):
@@ -291,18 +346,54 @@ class VMixAPI:
             try:
                 commands = self._send_queue.get(timeout=0.5)
             except queue.Empty:
+                self._debug_timing_summary()
                 continue
 
             if time.time() < self._send_suspend_until:
+                self._debug_timing_summary()
                 continue
 
             if all(mode == "api_plus" for mode, _, _, _ in commands):
+                now = time.time()
+                if now - self._api_plus_last_send_at < self._api_plus_min_send_interval:
+                    self._debug_timing_summary()
+                    continue
+
                 by_input: dict[str, list[tuple[str, str]]] = {}
                 for _, key, value, input_number in commands:
                     by_input.setdefault(input_number, []).append((key, value))
+                worker_start = time.time()
+                ok = True
+                fallback_used = False
                 for input_number, field_values in by_input.items():
-                    if not self._send_settext_tcp_batch(input_number, field_values):
+                    if time.time() >= self._api_plus_http_only_until:
+                        if self._send_settext_tcp_batch(
+                            input_number, field_values, apply_backoff=False
+                        ):
+                            continue
+                        # TCP is unstable right now; stay on HTTP fallback briefly
+                        # so we avoid rapid transport flapping.
+                        self._api_plus_http_only_until = time.time() + 2.0
+                        fallback_used = True
+                    else:
+                        fallback_used = True
+                    if not self._send_settext_http_batch(
+                        input_number, field_values, apply_backoff=False
+                    ):
+                        ok = False
                         break
+                self._api_plus_last_send_at = time.time()
+                if self._timing_debug:
+                    self._debug_last_send_ms = (time.time() - worker_start) * 1000.0
+                    if ok:
+                        self._debug_send_ok += 1
+                        self._debug_last_send_ok_at = time.time()
+                    else:
+                        self._debug_send_fail += 1
+                        self._debug_last_error = "tcp_batch_failed"
+                    if fallback_used and ok:
+                        self._debug_last_error = "tcp_fallback_http_ok"
+                    self._debug_timing_summary()
                 continue
 
             for mode, key, value, input_number in commands:
@@ -316,13 +407,23 @@ class VMixAPI:
     def update_vmix(self, detection: list[TextDetectionTargetWithResult]):
         if not self.running:
             return
+        if self._timing_debug:
+            now = time.time()
+            self._debug_updates += 1
+            if self._debug_last_update_at > 0:
+                gap = now - self._debug_last_update_at
+                if gap > 1.0:
+                    logger.warning("vMix API+ debug: OCR/update gap %.2fs", gap)
+            self._debug_last_update_at = now
+            self._debug_timing_summary()
 
         if not self.field_mapping:
             logger.debug("Field mapping is not set")
             return
 
+        force_send = self.force_next_send
         look_in = [TextDetectionTargetWithResult.ResultState.Success]
-        if self.update_same:
+        if self.update_same or force_send:
             # If we want to send the same values as well
             look_in.append(TextDetectionTargetWithResult.ResultState.SameNoChange)
 
@@ -351,3 +452,5 @@ class VMixAPI:
 
         if commands:
             self._enqueue_latest(commands)
+            if force_send:
+                self.force_next_send = False
