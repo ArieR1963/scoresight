@@ -89,12 +89,20 @@ class VMixUIHanlder:
     def togglevMix(self, value):
         if not self.vmixUpdater:
             return
-        if value:
-            self.ui.pushButton_startvmix.setText("🛑 Stop vMix")
-            self.vmixUpdater.running = True
+        self._setLegacyVmixLed(value)
+        self.vmixUpdater.running = value
+
+    def _setLegacyVmixLed(self, enabled: bool):
+        if not hasattr(self, "label_vmixLegacyStatus"):
+            return
+        if enabled:
+            self.label_vmixLegacyStatus.setText("● Running")
+            self.label_vmixLegacyStatus.setStyleSheet("color:#6bd67a;")
+            self.ui.pushButton_startvmix.setText("■ Stop")
         else:
-            self.ui.pushButton_startvmix.setText("▶️ Start vMix")
-            self.vmixUpdater.running = False
+            self.label_vmixLegacyStatus.setText("● Off")
+            self.label_vmixLegacyStatus.setStyleSheet("color:#8a8a8a;")
+            self.ui.pushButton_startvmix.setText("▶ Start")
 
     # -------- vMix API+ --------
     def _createVmixApiPlusTab(self):
@@ -257,9 +265,13 @@ class VMixUIHanlder:
         self.ui.lineEdit_vmixPort.textChanged.connect(self.vmixConnectionChanged)
         self.ui.inputLineEdit_vmix.textChanged.connect(self.vmixConnectionChanged)
         self.vmixConnectionChanged()
+        self.label_vmixLegacyStatus = QLabel("● Off", self.ui.connectionWidget)
+        self.label_vmixLegacyStatus.setStyleSheet("color:#8a8a8a;")
+        self.ui.horizontalLayout_18.addWidget(self.label_vmixLegacyStatus)
         self.ui.tableView_vmixMapping.setModel(QStandardItemModel())
         self.ui.tableView_vmixMapping.model().dataChanged.connect(self.vmixMappingChanged)
         self.ui.pushButton_startvmix.toggled.connect(self.togglevMix)
+        self._setLegacyVmixLed(self.ui.pushButton_startvmix.isChecked())
 
         mapping = fetch_data("scoresight.json", "vmix_mapping", {})
         if mapping and self.vmixUpdater:
