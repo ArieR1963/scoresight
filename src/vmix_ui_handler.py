@@ -100,10 +100,20 @@ class VMixUIHanlder:
     def togglevMix(self, value):
         if not self.vmixUpdater:
             return
-        self._setLegacyVmixLed(value)
-        self.vmixUpdater.running = value
         if value:
+            if not self.vmixUpdater.ping_api():
+                self.vmixUpdater.running = False
+                self._setLegacyVmixDisconnected()
+                self.ui.pushButton_startvmix.blockSignals(True)
+                self.ui.pushButton_startvmix.setChecked(False)
+                self.ui.pushButton_startvmix.blockSignals(False)
+                return
+            self.vmixUpdater.running = True
             self.vmixUpdater.request_force_send()
+            self._setLegacyVmixLed(True)
+            return
+        self.vmixUpdater.running = False
+        self._setLegacyVmixLed(False)
 
     def _setLegacyVmixLed(self, enabled: bool):
         if not hasattr(self, "label_vmixLegacyStatus"):
@@ -116,6 +126,13 @@ class VMixUIHanlder:
             self.label_vmixLegacyStatus.setText("● Off")
             self.label_vmixLegacyStatus.setStyleSheet("color:#8a8a8a;")
             self.ui.pushButton_startvmix.setText("▶ Start")
+
+    def _setLegacyVmixDisconnected(self):
+        if not hasattr(self, "label_vmixLegacyStatus"):
+            return
+        self.label_vmixLegacyStatus.setText("● Disconnected")
+        self.label_vmixLegacyStatus.setStyleSheet("color:#e05858;")
+        self.ui.pushButton_startvmix.setText("▶ Start")
 
     # -------- vMix API+ --------
     def _createVmixApiPlusTab(self):
@@ -217,16 +234,33 @@ class VMixUIHanlder:
             self.pushButton_startvmixApiPlus.setText("▶ Start")
 
     def togglevMixApiPlus(self, value: bool):
-        self._setApiPlusLed(value)
         self.globalSettingsChanged("vmix_api_plus_enabled", value)
-        if self.vmixApiPlusUpdater is not None:
-            self.vmixApiPlusUpdater.running = value
-            if value:
-                self.vmixApiPlusUpdater.request_force_send()
-                # Avoid blocking start/stop with repeated API fetches.
-                # Fetch once when no field-input map exists yet (fresh app/import).
-                if not self.vmixApiPlusUpdater.field_input_map:
-                    self._refreshVmixApiPlusFields(show_popup=False)
+        if self.vmixApiPlusUpdater is None:
+            return
+        if value:
+            if not self.vmixApiPlusUpdater.ping_api():
+                self.vmixApiPlusUpdater.running = False
+                self._setApiPlusDisconnected()
+                self.pushButton_startvmixApiPlus.blockSignals(True)
+                self.pushButton_startvmixApiPlus.setChecked(False)
+                self.pushButton_startvmixApiPlus.blockSignals(False)
+                return
+            self.vmixApiPlusUpdater.running = True
+            self.vmixApiPlusUpdater.request_force_send()
+            # Avoid blocking start/stop with repeated API fetches.
+            # Fetch once when no field-input map exists yet (fresh app/import).
+            if not self.vmixApiPlusUpdater.field_input_map:
+                self._refreshVmixApiPlusFields(show_popup=False)
+            self._setApiPlusLed(True)
+            return
+        self.vmixApiPlusUpdater.running = False
+        self._setApiPlusLed(False)
+
+    def _setApiPlusDisconnected(self):
+        self.vmixApiPlusEnabled = False
+        self.label_vmixApiPlusStatus.setText("● Disconnected")
+        self.label_vmixApiPlusStatus.setStyleSheet("color:#e05858;")
+        self.pushButton_startvmixApiPlus.setText("▶ Start")
 
     def fetchVmixApiPlusFields(self):
         self._refreshVmixApiPlusFields(show_popup=True)

@@ -9,6 +9,17 @@ from PySide6.QtWidgets import (
 
 from text_detection_target import TextDetectionTarget, TextDetectionTargetWithResult
 
+FIELD_PEN_DEFAULT = QColor(255, 210, 70, 240)
+FIELD_PEN_SELECTED = QColor(10, 200, 255, 220)
+FIELD_FILL_DEFAULT = QColor(255, 210, 70, 86)
+FIELD_FILL_SELECTED = QColor(8, 170, 220, 94)
+
+CORNER_FILL = QColor(255, 210, 70, 204)
+CORNER_PEN = QColor(255, 230, 140, 230)
+
+EXTRA_PEN = QColor(165, 118, 255, 250)
+EXTRA_FILL = QColor(110, 72, 190, 96)
+
 
 class ResizableRect(QGraphicsRectItem):
     selected_edge = None
@@ -21,7 +32,8 @@ class ResizableRect(QGraphicsRectItem):
         self.setPos(x, y)
         self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setAcceptHoverEvents(True)
-        self.setPen(QPen(QBrush(Qt.GlobalColor.red), 3))
+        self.setPen(QPen(FIELD_PEN_DEFAULT, 3))
+        self.setBrush(QBrush(FIELD_FILL_DEFAULT))
 
     def getOriginalRect(self):
         """
@@ -154,8 +166,8 @@ class ResizableRect(QGraphicsRectItem):
 class MiniRect(ResizableRect):
     def __init__(self, x, y, width, height, boxChangedCallback, parent=None):
         super().__init__(x, y, width, height)
-        self.setPen(QPen(QColor(255, 0, 0)))
-        self.setBrush(QBrush(QColor(255, 0, 0, 50)))
+        self.setPen(QPen(QColor(255, 210, 70, 230), 2))
+        self.setBrush(QBrush(QColor(255, 210, 70, 84)))
         self.setParentItem(parent)
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -245,12 +257,13 @@ class ResizableRectWithNameTypeAndResult(ResizableRect):
         self.add_button.setVisible(enabled)
 
     def setupTextItems(self, image_size, boxDisplayStyle):
-        self.posItem.setBrush(QBrush(QColor("red")))
+        self.posItem.setBrush(QBrush(QColor(230, 245, 255)))
         fontPos = QFont("Arial", int(image_size / 60) if image_size > 0 else 32)
         fontPos.setWeight(QFont.Weight.Bold)
         self.posItem.setFont(fontPos)
         self.posItem.setPen(QPen(QColor("black"), 1))
-        self.resultItem.setBrush(QBrush(QColor("red")))
+        self.resultItem.setBrush(QBrush(QColor(230, 245, 255)))
+        self.resultItem.setPen(QPen(QColor("white"), 1))
         fontRes = QFont("Arial", int(image_size / 75) if image_size > 0 else 20)
         fontRes.setWeight(QFont.Weight.Bold)
         self.resultItem.setFont(fontRes)
@@ -267,8 +280,8 @@ class ResizableRectWithNameTypeAndResult(ResizableRect):
             cornerBox = QGraphicsRectItem(
                 0, 0, self.cornerSize, self.cornerSize, parent=self
             )
-            cornerBox.setBrush(QBrush(QColor(255, 0, 0, 128)))  # Light red inside
-            cornerBox.setPen(QPen(QColor("red")))  # Red borders
+            cornerBox.setBrush(QBrush(CORNER_FILL))
+            cornerBox.setPen(QPen(CORNER_PEN))
             cornerBox.setZValue(3)
             cornerBox.setVisible(False)  # Initially hide the corner boxes
             self.cornerBoxes.append(cornerBox)
@@ -332,11 +345,15 @@ class ResizableRectWithNameTypeAndResult(ResizableRect):
         for cornerBox in self.cornerBoxes:
             cornerBox.setVisible(selected)
         if selected:
+            self.setPen(QPen(FIELD_PEN_SELECTED, 3))
+            self.setBrush(QBrush(FIELD_FILL_SELECTED))
             self.show()
             self.posItem.show()
             self.bgItem.show()
             self.resultItem.show()
         else:
+            self.setPen(QPen(FIELD_PEN_DEFAULT, 3))
+            self.setBrush(QBrush(FIELD_FILL_DEFAULT))
             self.setBoxDisplayStyle(self.boxDisplayStyle)
 
     def getRect(self):
@@ -392,7 +409,7 @@ class ResizableRectWithNameTypeAndResult(ResizableRect):
                 self.effectiveRect.setAcceptDrops(False)
                 self.effectiveRect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                 self.effectiveRect.setBrush(QBrush(QColor(0, 0, 0, 0)))
-                self.effectiveRect.setPen(QPen(QColor("green"), 3))
+                self.effectiveRect.setPen(QPen(QColor(85, 232, 140, 220), 3))
                 self.effectiveRect.setZValue(-1)
             else:
                 self.effectiveRect.setRect(targetWithResult.effectiveRect)
@@ -421,8 +438,8 @@ class ResizableRectWithNameTypeAndResult(ResizableRect):
                 extraRect.setAcceptHoverEvents(False)
                 extraRect.setAcceptDrops(False)
                 extraRect.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-                extraRect.setBrush(QBrush(QColor(0, 0, 0, 0)))
-                extraRect.setPen(QPen(QColor("blue"), 3))
+                extraRect.setBrush(QBrush(EXTRA_FILL))
+                extraRect.setPen(QPen(EXTRA_PEN, 3))
                 extraRect.setZValue(-2)
                 self.extraBoxes.append(extraRect)
 

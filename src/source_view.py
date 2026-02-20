@@ -218,9 +218,10 @@ class ImageViewer(CameraView):
             if self._boxPlacementPreview is not None:
                 self.scene.removeItem(self._boxPlacementPreview)
             self._boxPlacementPreview = QGraphicsRectItem()
-            self._boxPlacementPreview.setPen(QPen(QColor("cyan"), 2))
+            # High-contrast preview for drawing a new OCR field.
+            self._boxPlacementPreview.setPen(QPen(QColor(27, 168, 255, 235), 2))
             self._boxPlacementPreview.setBrush(
-                QBrush(QColor(0, 255, 255, 35), Qt.BrushStyle.SolidPattern)
+                QBrush(QColor(26, 196, 255, 84), Qt.BrushStyle.SolidPattern)
             )
             self._boxPlacementPreview.setZValue(3)
             self._boxPlacementPreview.setRect(
