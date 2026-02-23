@@ -1,4 +1,5 @@
 import math
+import platform
 from typing import Callable
 from PySide6.QtCore import QPointF, Qt, QTimer, QRectF
 from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPen, QPolygonF
@@ -75,6 +76,7 @@ class ImageViewer(CameraView):
             "scoresight.json", "box_display_style", 3
         )
         subscribe_to_data("scoresight.json", "box_display_style", self.boxDisplayStyle)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def beginBoxPlacement(self, name: str):
         self._boxPlacementMode = True
@@ -320,23 +322,50 @@ class ImageViewer(CameraView):
             super().mouseMoveEvent(event)
 
     def wheelEvent(self, event):
-        # check for ctrl key
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            self._isScaling = True
-            factor = 1.05
+        if self._isZoomModifierPressed(event.modifiers()):
             if event.angleDelta().y() > 0:
-                # zoom in
-                if self.transform().m11() < 3.0:
-                    self.scale(factor, factor)
+                self._zoomByFactor(1.05)
             else:
-                # zoom out
-                if self.transform().m11() > 0.33:
-                    self.scale(1 / factor, 1 / factor)
+                self._zoomByFactor(1 / 1.05)
             # Use QTimer.singleShot to delay resetting the flag
             QTimer.singleShot(0, self.resetScalingFlag)
         else:
             # scroll the scene
             super().wheelEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (
+            Qt.Key.Key_Plus,
+            Qt.Key.Key_Equal,
+        ):
+            self._zoomByFactor(1.05)
+            event.accept()
+            return
+        if event.key() in (
+            Qt.Key.Key_Minus,
+            Qt.Key.Key_Underscore,
+        ):
+            self._zoomByFactor(1 / 1.05)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _isZoomModifierPressed(self, modifiers: Qt.KeyboardModifiers) -> bool:
+        if platform.system() == "Darwin":
+            return bool(
+                modifiers & Qt.KeyboardModifier.MetaModifier
+                or modifiers & Qt.KeyboardModifier.ControlModifier
+            )
+        return bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+
+    def _zoomByFactor(self, factor: float):
+        self._isScaling = True
+        new_scale = self.transform().m11() * factor
+        if new_scale > 3.0 or new_scale < 0.33:
+            QTimer.singleShot(0, self.resetScalingFlag)
+            return
+        self.scale(factor, factor)
+        QTimer.singleShot(0, self.resetScalingFlag)
 
     def resetZoom(self):
         self.resetTransform()

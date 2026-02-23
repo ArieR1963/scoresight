@@ -1,0 +1,109 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs22
+\b ScoreSight - Overzicht van Wijzigingen (afgelopen weken)\b0\line
+\line
+\b Versie\b0\tab Werkoverzicht op basis van alle uitgevoerde sessies\line
+\b Doel\b0\tab 1 document met alle functionele en technische updates\line
+\line
+\b 1. OCR Workflow en veldplaatsing\b0\line
+- Nieuwe/verbeterde workflow voor velden toevoegen: eerst gericht plaatsen met crosshair, daarna kader trekken op juiste plek.\line
+- Gedrag toegepast op Time, Home, Away, Shot Clock en overige velden.\line
+- Cursor bij toevoegen aangepast naar plus/crosshair voor nauwkeuriger positioneren.\line
+- Auto-Tune blijft 5 seconden per run finetunen en kan opnieuw gestart worden na verplaatsen/aanpassen van kader.\line
+- Knoppenvolgorde aangepast: eerst Auto-Tune, daarna Reset to Baseline.\line
+- 'Apply Time Baseline' hernoemd naar 'Reset to Baseline'.\line
+\line
+\b 2. Beeldverwerking en weergave\b0\line
+- Na source-selectie + 4-corner correctie: verbeterde flow richting Binary view.\line
+- Defaultgedrag aangepast zodat oude velden niet ongewenst automatisch terugkomen bij nieuwe source.\line
+- Overlay-kleuren en transparantie herwerkt voor betere zichtbaarheid (zowel binary als non-binary).\line
+- Geselecteerde/niet-geselecteerde kaderstijlen visueel verbeterd.\line
+- Digit-vlakken (character boxes) duidelijker gemaakt met betere contrastkleuren.\line
+- Witte outline toegevoegd rond lage-hoek outputtekst voor betere leesbaarheid.\line
+\line
+\b 3. Shotclock-presets en sportlogica\b0\line
+- Shotclock-presets toegevoegd/uitgebreid: Basketball/Waterpolo (24), NCAA (30), Korfball (25), Roller Hockey (45), Custom.\line
+- Presets, regex/formaat en max-waardes afgestemd op sport-specifiek gedrag.\line
+- UI-layout shotclock-controls verplaatst en logischer onder target-instellingen geplaatst.\line
+- Formaatveld voor shotclock beschikbaar gehouden voor flexibiliteit.\line
+- Terminologie gecorrigeerd: Korfbal -> Korfball (EN).\line
+- Labelwijziging: 'Shotclock Max' teruggebracht naar 'Shotclock' (later per taal verfijnd).\line
+- Taalcorrectie op verzoek: NL = Schotklok, DE = Schussuhr.\line
+\line
+\b 4. vMix (Legacy) en vMix API+\b0\line
+- Bestaande vMix-output behouden, extra outputtype 'vMix API+' toegevoegd.\line
+- vMix API+ UI toegevoegd naast vMix-tab met eigen connectiestatus en veldmapping.\line
+- Fetch van veldnamen via /api (text name=...) ingebouwd en popup/selectieflow toegevoegd.\line
+- Mappingflow verbeterd: OCR-velden koppelen aan vMix-veldnamen.\line
+- Start/Stop-mechanisme met duidelijke statusindicator (running/off/disconnected).\line
+- Validatie van host/poort verbeterd: foutieve connectie toont niet meer ten onrechte groen.\line
+- Export/import van vMix API+ instellingen toegevoegd (host, port, mapping, enabled-gedrag).\line
+- Stabiliteitsfixes voor start/stop, inputwissel en output-refresh.\line
+- Directe initial push van actuele OCR-waardes bij starten output, zodat score/tijd niet achterblijft.\line
+- Delay- en batchgedrag geanalyseerd met debug logging; fallback/queue-gedrag verbeterd.\line
+- API+ throughput en smoothness verbeterd op basis van runtime debuggegevens.\line
+\line
+\b 5. Video file testbediening\b0\line
+- Controls toegevoegd voor video-bestanden:\line
+  - Play/Pause\line
+  - Rewind\line
+  - Forward\line
+  - Rewind to Start\line
+- Knoppenstate gekoppeld aan actief source-type (file vs camera).\line
+- Volgorde en plaatsing van knoppen geoptimaliseerd voor testworkflow.\line
+\line
+\b 6. Configuratie en persistency\b0\line
+- 4-corner correctie opgenomen in export/import configuratie.\line
+- Diverse runtime-instellingen consistenter opgeslagen/hersteld na herstart.\line
+- Gedrag bij laden configuratie verbeterd zodat 4-corner mode niet ongewenst opnieuw start bij box-edit.\line
+\line
+\b 7. OCR Training Dojo\b0\line
+- Probleem met 'Open Folder' in Dojo opgelost.\line
+- Trainingsdata-correctie workflow besproken en toegepast richting nieuwe traineddata-opbouw.\line
+- Advies gegeven over hergebruik bestaande trainingsdata van vorige maintainer.\line
+\line
+\b 8. UI/UX en stabiliteit\b0\line
+- Diverse UI-bugs opgelost (overlappende velden, verkeerde widgetpositie, niet-refreshende controls).\line
+- Verbeteringen aan app-gedrag bij sourcewissels en herstarts.\line
+- Meerdere fixes rond dubbele instances/legacy procesconflicten tijdens iteratief testen.\line
+- Specifieke fouten bij taalwissel opgevangen (o.a. deleted Qt-objecten tijdens retranslate).\line
+\line
+\b 9. Vertalingssysteem (grote update)\b0\line
+- Script toegevoegd voor export naar meertalig spreadsheet:\line
+  - scripts/export_translations_xlsx.py\line
+- Script uitgebreid voor import vanuit spreadsheet naar .ts:\line
+  - scripts/import_translations_xlsx.py\line
+- Importscript aangepast zodat ontbrekende keys automatisch worden toegevoegd (niet alleen bestaande updates).\line
+- Runtime-strings (die niet standaard in .ui stonden) toegevoegd aan vertaalflow.\line
+- Alle talen herhaaldelijk gecompileerd naar .qm na updates.\line
+- Vertaalde termen uitgebreid voor o.a.:\line
+  - vMix API+ labels/states\line
+  - OSD labels (Frames/s, Updates/s, Previews/s, Resolution)\line
+  - Shotclock presets\line
+  - Template Field\line
+  - Composite (Per-Character)\line
+  - Auto-Tune statusteksten\line
+  - OCR model labels\line
+- Translation Debug functie toegevoegd in menu om runtime locale/strings te inspecteren.\line
+\line
+\b 10. OCR model popup / Shotclock popup vertaalissues\b0\line
+- Hardnekkig issue met popupvertalingen onderzocht en stapsgewijs gefixt.\line
+- Locale-normalisatie toegevoegd (o.a. ja_JP/jp_JP varianten).\line
+- Extra fallbacklogica toegevoegd voor robuuste weergave bij runtime vertalen.\line
+- Debugdialoog toegevoegd om mismatch tussen translator, locale en daadwerkelijke popup-items zichtbaar te maken.\line
+- Resultaat: popupvertalingen werken nu correct; laatste taalcorrecties ook verwerkt.\line
+\line
+\b 11. Huidige status\b0\line
+- Kernfunctionaliteit voor OCR-veldworkflow, Auto-Tune, shotclock, video-testcontrols en vMix/vMix API+ staat operationeel.\line
+- Vertalingsflow via spreadsheet + import/export scripts staat operationeel.\line
+- Meeste recente taalcorrecties zijn verwerkt en gecompileerd.\line
+\line
+\b 12. Aanbevolen vervolgstappen\b0\line
+1. Eindevaluatie per taal op een vaste checklist (UI labels + popups + OSD).\line
+2. Compacte gebruikershandleiding opstellen op basis van dit overzicht.\line
+3. Optioneel: release-notes structureren per versie/tag voor toekomstige overdracht.\line
+\line
+\b Bestandslocatie\b0\line
+docs/ScoreSight_Wijzigingen_Overzicht.rtf\line
+}

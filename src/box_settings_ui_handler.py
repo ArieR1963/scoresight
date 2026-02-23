@@ -1,5 +1,6 @@
 from functools import partial
-from PySide6.QtCore import QSignalBlocker
+from typing import Callable
+from PySide6.QtCore import QSignalBlocker, QCoreApplication, QTranslator
 from PySide6.QtWidgets import (
     QSpinBox,
     QWidget,
@@ -21,38 +22,47 @@ from sc_logging import logger
 
 
 class BoxSettingsUIHandler:
-    def __init__(self, ui: Ui_MainWindow):
+    def __init__(
+        self,
+        ui: Ui_MainWindow,
+        translator: QTranslator | None = None,
+        locale_provider: Callable[[], str] | None = None,
+    ):
         self.ui = ui
+        self.translator = translator
+        self.locale_provider = locale_provider
         self.sliderValueInputs = {}
         self.shotclockPresets = [
-            {"label": "Custom", "max": None, "regex": None},
+            {"label_key": "Custom", "max": None, "regex": None},
             {
-                "label": "Basketball (24)",
+                "label_key": "Basketball (24)",
                 "max": 24,
                 "regex": r"^(?:(?:[6-9]|1\d|2[0-4])|(?:[0-5](?:\.[0-9])?))$",
             },
             {
-                "label": "NCAA Basketball (30)",
+                "label_key": "NCAA Basketball (30)",
                 "max": 30,
                 "regex": r"^(?:(?:[6-9]|[12]\d|30)|(?:[0-5](?:\.[0-9])?))$",
             },
             {
-                "label": "Waterpolo (24)",
+                "label_key": "Waterpolo (24)",
                 "max": 24,
                 "regex": r"^(?:(?:1\d|2[0-4])|(?:[0-9](?:\.[0-9])?))$",
             },
             {
-                "label": "Korfball (25)",
+                "label_key": "Korfball (25)",
                 "max": 25,
                 "regex": r"^(?:0\d|1\d|2[0-5])$",
             },
             {
-                "label": "Roller Hockey (45)",
+                "label_key": "Roller Hockey (45)",
                 "max": 45,
                 "regex": r"^(?:(?:[6-9]|[1-3]\d|4[0-5])|(?:[0-5](?:\.[0-9])?))$",
             },
         ]
         self.widget_shotclock = None
+        self.label_shotclockMax = None
+        self.label_shotclockFormat = None
         self.comboBox_shotclockPreset = None
         self.spinBox_shotclockMax = None
         self.lineEdit_shotclockFormatInfo = None
@@ -67,10 +77,8 @@ class BoxSettingsUIHandler:
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        label = QLabel("Shotclock Max", self.widget_shotclock)
+        self.label_shotclockMax = QLabel(self.widget_shotclock)
         self.comboBox_shotclockPreset = QComboBox(self.widget_shotclock)
-        for i, preset in enumerate(self.shotclockPresets):
-            self.comboBox_shotclockPreset.addItem(preset["label"], i)
         self.spinBox_shotclockMax = QSpinBox(self.widget_shotclock)
         self.spinBox_shotclockMax.setRange(1, 59)
         self.spinBox_shotclockMax.setValue(39)
@@ -79,17 +87,122 @@ class BoxSettingsUIHandler:
         self.lineEdit_shotclockFormatInfo = QLineEdit(self.widget_shotclock)
         self.lineEdit_shotclockFormatInfo.setReadOnly(False)
         self.lineEdit_shotclockFormatInfo.setMinimumWidth(180)
-        self.lineEdit_shotclockFormatInfo.setPlaceholderText("Format")
+        self.label_shotclockFormat = QLabel(self.widget_shotclock)
 
-        layout.addWidget(label)
+        layout.addWidget(self.label_shotclockMax)
         layout.addWidget(self.comboBox_shotclockPreset)
         layout.addWidget(self.spinBox_shotclockMax)
-        layout.addWidget(QLabel("Format", self.widget_shotclock))
+        layout.addWidget(self.label_shotclockFormat)
         layout.addWidget(self.lineEdit_shotclockFormatInfo)
+        self.retranslateShotclockControls()
 
         # Place shotclock controls directly below the target row.
         self.ui.gridLayout_6.addWidget(self.widget_shotclock, 1, 2, 1, 2)
         self._setShotclockControlsVisible(False)
+
+    def _tr(self, text: str) -> str:
+        locale = self.locale_provider() if self.locale_provider is not None else ""
+        locale = self._normalize_locale(locale)
+        locale_overrides = {
+            "ja_JP": {
+                "Custom": "カスタム",
+                "Shotclock": "ショットクロック",
+                "Basketball (24)": "バスケットボール (24)",
+                "NCAA Basketball (30)": "NCAA バスケットボール (30)",
+                "Waterpolo (24)": "水球 (24)",
+                "Korfball (25)": "コーフボール (25)",
+                "Roller Hockey (45)": "ローラーホッケー (45)",
+            },
+            "nl_NL": {
+                "Custom": "Aangepast",
+                "Shotclock": "Shotklok",
+                "Basketball (24)": "Basketbal (24)",
+                "NCAA Basketball (30)": "NCAA Basketbal (30)",
+                "Waterpolo (24)": "Waterpolo (24)",
+                "Korfball (25)": "Korfbal (25)",
+                "Roller Hockey (45)": "Rolschaatshockey (45)",
+            },
+        }
+        manual = locale_overrides.get(locale, {}).get(text)
+        if manual:
+            return manual
+        if self.translator is not None:
+            translated = self.translator.translate("MainWindow", text)
+            if translated and translated != text:
+                return translated
+        return QCoreApplication.translate("MainWindow", text)
+
+    @staticmethod
+    def _normalize_locale(locale: str) -> str:
+        l = (locale or "").replace("-", "_")
+        ll = l.lower()
+        if ll.startswith("jp_") or ll.startswith("ja"):
+            return "ja_JP"
+        if ll.startswith("nl"):
+            return "nl_NL"
+        return l
+
+    def retranslateShotclockControls(self):
+        if self.comboBox_shotclockPreset is None:
+            return
+        try:
+            current_index = self.comboBox_shotclockPreset.currentIndex()
+        except RuntimeError:
+            return
+        self.comboBox_shotclockPreset.blockSignals(True)
+        self.comboBox_shotclockPreset.clear()
+        for i, preset in enumerate(self.shotclockPresets):
+            self.comboBox_shotclockPreset.addItem(
+                self._tr(str(preset["label_key"])),
+                i,
+            )
+        if current_index < 0:
+            current_index = 0
+        self.comboBox_shotclockPreset.setCurrentIndex(
+            max(0, min(current_index, self.comboBox_shotclockPreset.count() - 1))
+        )
+        self.comboBox_shotclockPreset.blockSignals(False)
+        if self.label_shotclockMax is not None:
+            try:
+                self.label_shotclockMax.setText(self._tr("Shotclock"))
+            except RuntimeError:
+                self.label_shotclockMax = None
+        if self.label_shotclockFormat is not None:
+            try:
+                self.label_shotclockFormat.setText(self._tr("Format"))
+            except RuntimeError:
+                self.label_shotclockFormat = None
+        if self.lineEdit_shotclockFormatInfo is not None:
+            try:
+                self.lineEdit_shotclockFormatInfo.setPlaceholderText(self._tr("Format"))
+            except RuntimeError:
+                self.lineEdit_shotclockFormatInfo = None
+
+    def translationDebugInfo(self) -> dict:
+        raw_locale = self.locale_provider() if self.locale_provider is not None else ""
+        normalized_locale = self._normalize_locale(raw_locale)
+        keys = [
+            "Custom",
+            "Shotclock",
+            "Basketball (24)",
+            "NCAA Basketball (30)",
+            "Waterpolo (24)",
+            "Korfball (25)",
+            "Roller Hockey (45)",
+        ]
+        translated = {k: self._tr(k) for k in keys}
+        current_items = []
+        if self.comboBox_shotclockPreset is not None:
+            current_items = [
+                self.comboBox_shotclockPreset.itemText(i)
+                for i in range(self.comboBox_shotclockPreset.count())
+            ]
+        return {
+            "raw_locale": raw_locale,
+            "normalized_locale": normalized_locale,
+            "translated": translated,
+            "current_items": current_items,
+        }
 
     def _replaceLabelWithSpinBox(self, label_widget, minimum, maximum, suffix=""):
         container = label_widget.parentWidget()

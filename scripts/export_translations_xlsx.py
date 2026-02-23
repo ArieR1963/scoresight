@@ -12,6 +12,63 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TRANSLATIONS_DIR = REPO_ROOT / "translations"
 OUT_XLSX = TRANSLATIONS_DIR / "scoresight_translations.xlsx"
 
+# Strings created at runtime (not generated from .ui/.ts automatically yet).
+# Add them to the spreadsheet so they can still be translated centrally.
+EXTRA_RUNTIME_SOURCES: list[tuple[str, str]] = [
+    ("MainWindow", "Connection"),
+    ("MainWindow", "Fetch Fields"),
+    ("MainWindow", "vMix API+"),
+    ("MainWindow", "vMix API+ Fields"),
+    ("MainWindow", "● Running"),
+    ("MainWindow", "● Off"),
+    ("MainWindow", "● Disconnected"),
+    ("MainWindow", "▶ Start"),
+    ("MainWindow", "■ Stop"),
+    ("MainWindow", "No text fields found. Check host/port and try again."),
+    ("MainWindow", 'Found {n} field names from /api (<text name="...">).'),
+    # Common UI labels that may be missing in legacy/outdated TS snapshots.
+    ("MainWindow", "Crop"),
+    ("MainWindow", "Rotate"),
+    ("MainWindow", "Send Same?"),
+    ("MainWindow", "Save OCR Training Data"),
+    ("MainWindow", "No Box"),
+    ("MainWindow", "Outline"),
+    ("MainWindow", "Names"),
+    ("MainWindow", "All"),
+    ("MainWindow", "Video Settings"),
+    ("MainWindow", "Pause"),
+    ("MainWindow", "Frames/s"),
+    ("MainWindow", "Updates/s"),
+    ("MainWindow", "Previews/s"),
+    ("MainWindow", "Resolution"),
+    ("MainWindow", "Daktronics"),
+    ("MainWindow", "General Scoreboard"),
+    ("MainWindow", "General Fonts (English)"),
+    ("MainWindow", "General Scoreboard Large"),
+    ("MainWindow", "Load External OCR Model"),
+    ("MainWindow", "Template Field"),
+    ("MainWindow", "Composite (Per-Character)"),
+    ("MainWindow", "Reset to Baseline"),
+    ("MainWindow", "Auto-tune: idle"),
+    ("MainWindow", "Auto-tune: {status}"),
+    ("MainWindow", "idle"),
+    ("MainWindow", "select source"),
+    ("MainWindow", "draw {name}"),
+    ("MainWindow", "tuning {name} ({current}/{total})"),
+    ("MainWindow", "done"),
+    ("MainWindow", "select field"),
+    ("MainWindow", "field not active"),
+    ("MainWindow", "Custom"),
+    ("MainWindow", "Shotclock"),
+    ("MainWindow", "Ctrl-scroll to zoom, +/- to zoom"),
+    ("MainWindow", "⌘-scroll to zoom, +/- to zoom"),
+    ("MainWindow", "Basketball (24)"),
+    ("MainWindow", "NCAA Basketball (30)"),
+    ("MainWindow", "Waterpolo (24)"),
+    ("MainWindow", "Korfball (25)"),
+    ("MainWindow", "Roller Hockey (45)"),
+]
+
 
 @dataclass
 class Entry:
@@ -101,6 +158,21 @@ def build_xlsx(ts_files: list[Path], out_path: Path) -> None:
         raise RuntimeError("Missing translations/scoresight_en_US.ts")
 
     en_entries = parsed["en_US"]
+    en_key_set = {e.key for e in en_entries}
+    for context, source in EXTRA_RUNTIME_SOURCES:
+        key = f"{context}::{source}"
+        if key in en_key_set:
+            continue
+        en_entries.append(
+            Entry(
+                key=key,
+                context=context,
+                source=source,
+                translation=source,
+                status="translated",
+            )
+        )
+        en_key_set.add(key)
     en_by_key = {e.key: e for e in en_entries}
     key_order = [e.key for e in en_entries]
 

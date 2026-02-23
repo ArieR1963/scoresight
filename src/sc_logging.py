@@ -86,4 +86,16 @@ try:
     # Create a logger
     logger, file_handler, log_file_path = setup_logging()
 except Exception as e:
+    # Never let logging setup failure block app startup.
     print(f"Error setting up logging: {e}")
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    if not logger.handlers:
+        fallback_handler = logging.StreamHandler()
+        fallback_handler.setLevel(logging.INFO)
+        fallback_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - %(message)s")
+        )
+        logger.addHandler(fallback_handler)
+    file_handler = None
+    log_file_path = ""

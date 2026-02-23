@@ -3,6 +3,7 @@ import os
 import platform
 import datetime
 import json
+import threading
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,6 +27,7 @@ from PySide6.QtCore import (
     QEvent,
     QMetaMethod,
     QUrl,
+    QLocale,
 )
 from dotenv import load_dotenv
 from os import path
@@ -97,7 +99,10 @@ class MainWindow(QMainWindow):
 
     def __init__(self, translator: QTranslator, parent: QObject):
         super(MainWindow, self).__init__()
+        self._ndi_scan_placeholder_uuid = "__ndi_scan__"
+        self._ndi_scan_in_progress = False
         self.parent_object = parent
+        self.current_locale = QLocale.system().name()
         self.ui = Ui_MainWindow()
         logger.info("Starting ScoreSight")
         self.ui.setupUi(self)
@@ -116,11 +121,14 @@ class MainWindow(QMainWindow):
         self.menubar = self.menuBar()
         file_menu = self.menubar.addMenu("File")
 
-        # check for updates
-        check_for_updates(False)
+        # Check for updates in the background so startup cannot block the main UI.
+        threading.Thread(
+            target=lambda: check_for_updates(False), daemon=True
+        ).start()
         file_menu.addAction("Check for Updates", lambda: check_for_updates(True))
         file_menu.addAction("About", self.openAboutDialog)
         file_menu.addAction("View Current Log", self.openLogsDialog)
+        file_menu.addAction("Translation Debug", self.showTranslationDebugDialog)
         file_menu.addAction("Import Configuration", self.importConfiguration)
         file_menu.addAction("Export Configuration", self.exportConfiguration)
         file_menu.addAction("Open Configuration Folder", self.openConfigurationFolder)
@@ -159,7 +167,9 @@ class MainWindow(QMainWindow):
 
         self.vmixUiHandler = VMixUIHanlder(self.ui)
         self.unoUiHandler = UNOUIHandler(self.ui)
-        self.boxSettingsUiHandler = BoxSettingsUIHandler(self.ui)
+        self.boxSettingsUiHandler = BoxSettingsUIHandler(
+            self.ui, self.translator, self._effective_ui_locale
+        )
 
         self.ui.checkBox_templatefield.toggled.connect(self.makeTemplateField)
 
@@ -254,14 +264,7 @@ class MainWindow(QMainWindow):
 
         self.obs_websocket_client = None
 
-        ocr_models = [
-            "Daktronics",
-            "General Scoreboard",
-            "General Fonts (English)",
-            "General Scoreboard Large",
-            "Load External OCR Model",
-        ]
-        self.ui.comboBox_ocrModel.addItems(ocr_models)
+        self._refreshOcrModelCombo()
         # default to General Scoreboard
         ocr_model_from_storage = fetch_data("scoresight.json", "ocr_model", 1)
         if type(ocr_model_from_storage) == str:
@@ -294,6 +297,7 @@ class MainWindow(QMainWindow):
         self.ui.comboBox_boxDisplayStyle.setCurrentIndex(
             box_display_style if type(box_display_style) == int else 3
         )
+        self._updateZoomHintLabel()
 
         self.ui.checkBox_updateOnchange.toggled.connect(self.toggleUpdateOnChange)
 
@@ -389,6 +393,7 @@ class MainWindow(QMainWindow):
 
         self.update_sources.connect(self.updateSources)
         self.get_sources.connect(self.getSources)
+        self._source_scan_in_progress = False
         self.get_sources.emit()
 
     def setStyleTheme(self, theme):
@@ -504,23 +509,257 @@ class MainWindow(QMainWindow):
             self.menubar.setVisible(False)
         super().changeEvent(event)
 
+    def _active_locale(self) -> str:
+        locale = self.current_locale
+        try:
+            tr_lang = self.translator.language()
+            if tr_lang:
+                locale = tr_lang
+        except Exception:
+            pass
+        return self._normalize_locale(locale)
+
+    def _effective_ui_locale(self) -> str:
+        # Prefer translator locale, but if Qt reports an ambiguous locale (like C),
+        # infer from already translated UI labels.
+        locale = self._active_locale()
+        if locale not in {"C", "POSIX", "en_US", "en"}:
+            return locale
+        baseline_text = self.ui.pushButton_applyTimeBaseline.text().strip()
+        if baseline_text == "ベースラインにリセット":
+            return "ja_JP"
+        if baseline_text == "Reset naar baseline":
+            return "nl_NL"
+        return locale
+
+    @staticmethod
+    def _normalize_locale(locale: str) -> str:
+        l = (locale or "").replace("-", "_")
+        ll = l.lower()
+        if ll.startswith("jp_") or ll.startswith("ja"):
+            return "ja_JP"
+        if ll.startswith("nl"):
+            return "nl_NL"
+        if ll.startswith("de"):
+            return "de_DE"
+        if ll.startswith("es"):
+            return "es_ES"
+        if ll.startswith("fr"):
+            return "fr_FR"
+        if ll.startswith("it"):
+            return "it_IT"
+        if ll.startswith("ko"):
+            return "ko_KR"
+        if ll.startswith("pl"):
+            return "pl_PL"
+        if ll.startswith("pt_br"):
+            return "pt_BR"
+        if ll.startswith("pt"):
+            return "pt_PT"
+        if ll.startswith("ru"):
+            return "ru_RU"
+        if ll.startswith("zh"):
+            return "zh_CN"
+        return l
+
+    def _ocrModelDisplayNames(self) -> list[str]:
+        locale_overrides = {
+            "ja_JP": {
+                "Daktronics": "ダクトロニクス",
+                "General Scoreboard": "一般スコアボード",
+                "General Fonts (English)": "一般フォント（英語）",
+                "General Scoreboard Large": "一般スコアボード（大）",
+                "Load External OCR Model": "外部OCRモデルを読み込む",
+            },
+            "nl_NL": {
+                "Daktronics": "Daktronics",
+                "General Scoreboard": "Algemeen scorebord",
+                "General Fonts (English)": "Algemene lettertypen (Engels)",
+                "General Scoreboard Large": "Algemeen scorebord groot",
+                "Load External OCR Model": "Extern OCR-model laden",
+            },
+            "de_DE": {
+                "Daktronics": "Daktronics",
+                "General Scoreboard": "Allgemeine Anzeigetafel",
+                "General Fonts (English)": "Allgemeine Schriftarten (Englisch)",
+                "General Scoreboard Large": "Allgemeine Anzeigetafel Groß",
+                "Load External OCR Model": "Externes OCR-Modell laden",
+            },
+            "es_ES": {
+                "Daktronics": "Daktronics",
+                "General Scoreboard": "Marcador general",
+                "General Fonts (English)": "Fuentes generales (inglés)",
+                "General Scoreboard Large": "Marcador general grande",
+                "Load External OCR Model": "Cargar modelo OCR externo",
+            },
+            "fr_FR": {
+                "Daktronics": "Daktronics",
+                "General Scoreboard": "Tableau des scores général",
+                "General Fonts (English)": "Polices générales (anglais)",
+                "General Scoreboard Large": "Tableau des scores général grand",
+                "Load External OCR Model": "Charger un modèle OCR externe",
+            },
+            "ko_KR": {
+                "Daktronics": "닥트로닉스",
+            },
+            "ru_RU": {
+                "Daktronics": "Дактроникс",
+            },
+            "zh_CN": {
+                "Daktronics": "达科电子",
+            },
+        }
+
+        def _tr(source: str) -> str:
+            manual = locale_overrides.get(self._effective_ui_locale(), {}).get(source)
+            if manual:
+                return manual
+            translated = self.translator.translate("MainWindow", source)
+            if translated and translated != source:
+                return translated
+            return source
+
+        return [
+            _tr("Daktronics"),
+            _tr("General Scoreboard"),
+            _tr("General Fonts (English)"),
+            _tr("General Scoreboard Large"),
+            _tr("Load External OCR Model"),
+        ]
+
+    def _refreshOcrModelCombo(self):
+        current_index = self.ui.comboBox_ocrModel.currentIndex()
+        if current_index < 0:
+            current_index = fetch_data("scoresight.json", "ocr_model", 1)
+            if type(current_index) == str:
+                current_index = 4
+        self.ui.comboBox_ocrModel.blockSignals(True)
+        self.ui.comboBox_ocrModel.clear()
+        self.ui.comboBox_ocrModel.addItems(self._ocrModelDisplayNames())
+        if self.ui.comboBox_ocrModel.count() > 0:
+            self.ui.comboBox_ocrModel.setCurrentIndex(
+                max(0, min(current_index, self.ui.comboBox_ocrModel.count() - 1))
+            )
+        self.ui.comboBox_ocrModel.blockSignals(False)
+
     def changeLanguage(self, locale):
         locale_file = resource_path("translations", f"scoresight_{locale}.qm")
         logger.info(f"Changing language to {locale_file}")
         if not self.translator.load(locale_file):
             logger.error(f"Could not load translation for {locale_file}")
             return
+        self.current_locale = locale
         appInstance = QApplication.instance()
         if appInstance:
             logger.info(f"installing translator for {locale}")
             appInstance.installTranslator(self.translator)
             try:
                 self.ui.retranslateUi(self)
+                self._updateZoomHintLabel()
             except Exception as e:
-                logger.error(f"Error retranslating UI: {e}")
+                logger.error(f"Error in ui.retranslateUi: {e}")
+            try:
+                self._refreshOcrModelCombo()
+            except Exception as e:
+                logger.error(f"Error refreshing OCR model combo translations: {e}")
+            if hasattr(self, "boxSettingsUiHandler") and self.boxSettingsUiHandler:
+                try:
+                    self.boxSettingsUiHandler.retranslateShotclockControls()
+                except Exception as e:
+                    logger.error(
+                        f"Error refreshing shotclock preset translations: {e}"
+                    )
 
     def addLanguageOption(self, menu: QMenu, language_name: str, locale: str):
         menu.addAction(language_name, lambda: self.changeLanguage(locale))
+
+    def _updateZoomHintLabel(self):
+        if not hasattr(self.ui, "label_11"):
+            return
+        if platform.system() == "Darwin":
+            self.ui.label_11.setText(
+                QCoreApplication.translate(
+                    "MainWindow", "⌘-scroll to zoom, +/- to zoom"
+                )
+            )
+        else:
+            self.ui.label_11.setText(
+                QCoreApplication.translate(
+                    "MainWindow", "Ctrl-scroll to zoom, +/- to zoom"
+                )
+            )
+
+    def showTranslationDebugDialog(self):
+        translator_lang = ""
+        translator_file = ""
+        try:
+            translator_lang = self.translator.language()
+        except Exception:
+            translator_lang = "-"
+        try:
+            translator_file = self.translator.filePath()
+        except Exception:
+            translator_file = "-"
+
+        ocr_sources = [
+            "Daktronics",
+            "General Scoreboard",
+            "General Fonts (English)",
+            "General Scoreboard Large",
+            "Load External OCR Model",
+        ]
+        ocr_direct = {
+            s: self.translator.translate("MainWindow", s) for s in ocr_sources
+        }
+        ocr_final = self._ocrModelDisplayNames()
+        ocr_current_items = [
+            self.ui.comboBox_ocrModel.itemText(i)
+            for i in range(self.ui.comboBox_ocrModel.count())
+        ]
+        shotclock_debug = {}
+        if hasattr(self, "boxSettingsUiHandler") and self.boxSettingsUiHandler:
+            shotclock_debug = self.boxSettingsUiHandler.translationDebugInfo()
+
+        lines = [
+            "=== Translation Debug ===",
+            f"current_locale: {self.current_locale}",
+            f"active_locale: {self._active_locale()}",
+            f"effective_ui_locale: {self._effective_ui_locale()}",
+            f"translator.language(): {translator_lang}",
+            f"translator.filePath(): {translator_file}",
+            "",
+            "[OCR Model]",
+        ]
+        lines.extend([f"translator[{k}] = {ocr_direct.get(k, '')}" for k in ocr_sources])
+        lines.append(f"final_names = {ocr_final}")
+        lines.append(f"combo_items = {ocr_current_items}")
+        lines.append("")
+        lines.append("[Shotclock]")
+        if shotclock_debug:
+            lines.append(f"raw_locale = {shotclock_debug.get('raw_locale', '')}")
+            lines.append(
+                f"normalized_locale = {shotclock_debug.get('normalized_locale', '')}"
+            )
+            translated = shotclock_debug.get("translated", {})
+            for k in [
+                "Custom",
+                "Shotclock",
+                "Basketball (24)",
+                "NCAA Basketball (30)",
+                "Waterpolo (24)",
+                "Korfball (25)",
+                "Roller Hockey (45)",
+            ]:
+                lines.append(f"translated[{k}] = {translated.get(k, '')}")
+            lines.append(
+                f"combo_items = {shotclock_debug.get('current_items', [])}"
+            )
+        else:
+            lines.append("boxSettingsUiHandler not available")
+
+        msg = "\n".join(lines)
+        logger.info(msg)
+        QMessageBox.information(self, "Translation Debug", msg)
 
     def toggleUpdateOnChange(self, value):
         self.globalSettingsChanged("update_on_change", value)
@@ -551,11 +790,19 @@ class MainWindow(QMainWindow):
         boxes = config
         four_corners = None
         vmix_api_plus = None
+        obs_settings = None
+        text_output = None
+        uno_output = None
+        api_output = None
         # New format: {"boxes": [...], "four_corners": [[x,y], ...]}
         if isinstance(config, dict):
             boxes = config.get("boxes")
             four_corners = config.get("four_corners")
             vmix_api_plus = config.get("vmix_api_plus")
+            obs_settings = config.get("obs")
+            text_output = config.get("text_output")
+            uno_output = config.get("uno")
+            api_output = config.get("api_output")
 
         if not isinstance(boxes, list) or not self.detectionTargetsStorage.loadBoxesFromDict(boxes):
             logger.error("Error loading configuration file")
@@ -606,6 +853,87 @@ class MainWindow(QMainWindow):
                 # Ensure mapping tables reflect imported settings immediately.
                 self.vmixUiHandler.updatevMixTable(self.detectionTargetsStorage.get_data())
 
+            if isinstance(obs_settings, dict):
+                if (
+                    isinstance(obs_settings.get("ip"), str)
+                    and isinstance(obs_settings.get("port"), str)
+                    and isinstance(obs_settings.get("password"), str)
+                ):
+                    store_data("scoresight.json", "obs", obs_settings)
+
+            if isinstance(text_output, dict):
+                output_folder = text_output.get("output_folder")
+                if isinstance(output_folder, str):
+                    self.out_folder = output_folder
+                    store_data("scoresight.json", "output_folder", output_folder)
+                    self.ui.lineEdit_folder.setText(output_folder)
+                if isinstance(text_output.get("save_csv"), bool):
+                    self.ui.checkBox_saveCsv.setChecked(text_output.get("save_csv"))
+                if isinstance(text_output.get("save_xml"), bool):
+                    self.ui.checkBox_saveXML.setChecked(text_output.get("save_xml"))
+                if isinstance(text_output.get("append_method"), int):
+                    self.ui.comboBox_appendMethod.setCurrentIndex(
+                        max(0, min(text_output.get("append_method"), self.ui.comboBox_appendMethod.count() - 1))
+                    )
+                if isinstance(text_output.get("clear_before_append"), bool):
+                    self.ui.checkBox_clear_before_append.setChecked(
+                        text_output.get("clear_before_append")
+                    )
+                if isinstance(text_output.get("aggs_per_second"), int):
+                    self.ui.horizontalSlider_aggsPerSecond.setValue(
+                        max(
+                            self.ui.horizontalSlider_aggsPerSecond.minimum(),
+                            min(
+                                text_output.get("aggs_per_second"),
+                                self.ui.horizontalSlider_aggsPerSecond.maximum(),
+                            ),
+                        )
+                    )
+
+            if isinstance(uno_output, dict):
+                uno_url = uno_output.get("url")
+                uno_mapping = uno_output.get("mapping")
+                uno_send_same = uno_output.get("send_same")
+                uno_essentials = uno_output.get("essentials")
+                uno_essentials_id = uno_output.get("essentials_id")
+                if isinstance(uno_url, str):
+                    store_data("scoresight.json", "uno_url", uno_url)
+                    self.ui.lineEdit_unoUrl.setText(uno_url)
+                if isinstance(uno_mapping, dict):
+                    store_data("scoresight.json", "uno_mapping", uno_mapping)
+                if isinstance(uno_send_same, bool):
+                    store_data("scoresight.json", "uno_send_same", uno_send_same)
+                    self.ui.checkBox_uno_send_same.setChecked(uno_send_same)
+                if isinstance(uno_essentials, bool):
+                    store_data("scoresight.json", "uno_essentials", uno_essentials)
+                    self.ui.checkBox_uno_essentials.setChecked(uno_essentials)
+                if isinstance(uno_essentials_id, str):
+                    store_data("scoresight.json", "uno_essentials_id", uno_essentials_id)
+                    self.ui.lineEdit_uno_essentials_id.setText(uno_essentials_id)
+                self.unoUiHandler.updateUNOTable(self.detectionTargetsStorage.get_data())
+
+            if isinstance(api_output, dict):
+                enable_out_api = api_output.get("enabled")
+                out_api_url = api_output.get("url")
+                out_api_encoding = api_output.get("encoding")
+                out_api_method = api_output.get("method")
+                if isinstance(enable_out_api, bool):
+                    store_data("scoresight.json", "enable_out_api", enable_out_api)
+                    self.ui.checkBox_enableOutAPI.setChecked(enable_out_api)
+                if isinstance(out_api_url, str):
+                    store_data("scoresight.json", "out_api_url", out_api_url)
+                    self.ui.lineEdit_api_url.setText(out_api_url)
+                if isinstance(out_api_encoding, str):
+                    store_data("scoresight.json", "out_api_encoding", out_api_encoding)
+                    idx = self.ui.comboBox_api_encode.findText(out_api_encoding)
+                    if idx >= 0:
+                        self.ui.comboBox_api_encode.setCurrentIndex(idx)
+                if isinstance(out_api_method, str):
+                    store_data("scoresight.json", "out_api_method", out_api_method)
+                    idx = self.ui.comboBox_outApiMethod.findText(out_api_method)
+                    if idx >= 0:
+                        self.ui.comboBox_outApiMethod.setCurrentIndex(idx)
+
     def exportConfiguration(self):
         # open a file dialog to select the output file
         file, _ = QFileDialog.getSaveFileName(
@@ -621,6 +949,32 @@ class MainWindow(QMainWindow):
                 "port": fetch_data("scoresight.json", "vmix_api_plus_port", "8088"),
                 "mapping": fetch_data("scoresight.json", "vmix_api_plus_mapping", {}),
                 "enabled": fetch_data("scoresight.json", "vmix_api_plus_enabled", False),
+            },
+            "obs": fetch_data("scoresight.json", "obs", {}),
+            "text_output": {
+                "output_folder": fetch_data("scoresight.json", "output_folder", ""),
+                "save_csv": fetch_data("scoresight.json", "save_csv", False),
+                "save_xml": fetch_data("scoresight.json", "save_xml", False),
+                "append_method": fetch_data("scoresight.json", "append_method", 3),
+                "clear_before_append": fetch_data("scoresight.json", "clear_before_append", False),
+                "aggs_per_second": fetch_data("scoresight.json", "aggs_per_second", 20),
+            },
+            "uno": {
+                "url": fetch_data(
+                    "scoresight.json",
+                    "uno_url",
+                    "https://app.overlays.uno/apiv2/controlapps/.../api",
+                ),
+                "mapping": fetch_data("scoresight.json", "uno_mapping", {}),
+                "send_same": fetch_data("scoresight.json", "uno_send_same", False),
+                "essentials": fetch_data("scoresight.json", "uno_essentials", False),
+                "essentials_id": fetch_data("scoresight.json", "uno_essentials_id", ""),
+            },
+            "api_output": {
+                "enabled": fetch_data("scoresight.json", "enable_out_api", False),
+                "url": fetch_data("scoresight.json", "out_api_url", ""),
+                "encoding": fetch_data("scoresight.json", "out_api_encoding", "JSON"),
+                "method": fetch_data("scoresight.json", "out_api_method", "POST"),
             },
         }
         with open(file, "w") as f:
@@ -712,10 +1066,12 @@ class MainWindow(QMainWindow):
     def toggleStopUpdates(self, value):
         self.updateOCRResults = not value
         # change the text on the button
+        translated_resume = self.translator.translate("MainWindow", "Resume Updates")
+        translated_stop = self.translator.translate("MainWindow", "Stop Updates")
         self.ui.pushButton_stopUpdates.setText(
-            self.translator.translate("MainWindow", "Resume Updates")
+            (translated_resume or "Resume Updates")
             if value
-            else self.translator.translate("MainWindow", "Stop Updates")
+            else (translated_stop or "Stop Updates")
         )
 
     def selectOutputFolder(self):
@@ -883,7 +1239,21 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def getSources(self):
-        self.update_sources.emit(get_camera_info())
+        if self._source_scan_in_progress:
+            return
+        self._source_scan_in_progress = True
+
+        def _scan_sources():
+            try:
+                sources = get_camera_info()
+            except Exception as e:
+                logger.error(f"Error while getting sources: {e}")
+                sources = []
+            finally:
+                self._source_scan_in_progress = False
+            self.update_sources.emit(sources)
+
+        threading.Thread(target=_scan_sources, daemon=True).start()
 
     @Slot(list)
     def updateSources(self, camera_sources: list[CameraInfo]):
@@ -891,6 +1261,17 @@ class MainWindow(QMainWindow):
         # clear all the items after "Screen Capture"
         for i in range(4, self.ui.comboBox_camera_source.count()):
             self.ui.comboBox_camera_source.removeItem(4)
+
+        # Keep NDI available in UI, but only scan network when user explicitly selects it.
+        self.ui.comboBox_camera_source.addItem(
+            "NDI Source (Scan Network)",
+            CameraInfo(
+                "NDI Source (Scan Network)",
+                self._ndi_scan_placeholder_uuid,
+                self._ndi_scan_placeholder_uuid,
+                CameraInfo.CameraType.NDI,
+            ),
+        )
 
         # populate the combobox with the sources
         for source in camera_sources:
@@ -1012,8 +1393,70 @@ class MainWindow(QMainWindow):
             # get the window ID from the comboBox_window
             window_id = ui_screencapture.comboBox_window.currentData()
             self.source_name = window_id
+        else:
+            selected_data = self.ui.comboBox_camera_source.currentData()
+            if (
+                isinstance(selected_data, CameraInfo)
+                and selected_data.type == CameraInfo.CameraType.NDI
+                and selected_data.uuid == self._ndi_scan_placeholder_uuid
+            ):
+                self.scanNdiSourcesOnDemand()
+                return
 
         # store the source selection in scoresight.json
+        self.globalSettingsChanged("source_selected", self.source_name)
+        self.sourceSelectionSucessful()
+
+    def scanNdiSourcesOnDemand(self):
+        if self._ndi_scan_in_progress:
+            return
+        self._ndi_scan_in_progress = True
+        try:
+            from ndi import NDICapture
+
+            ndi_sources = NDICapture.get_camera_info_ndi()
+        except Exception as e:
+            logger.error(f"NDI scan failed: {e}")
+            ndi_sources = []
+        finally:
+            self._ndi_scan_in_progress = False
+
+        # Remove previously discovered NDI entries while keeping the scan placeholder.
+        i = 5
+        while i < self.ui.comboBox_camera_source.count():
+            data = self.ui.comboBox_camera_source.itemData(i)
+            if (
+                isinstance(data, CameraInfo)
+                and data.type == CameraInfo.CameraType.NDI
+                and data.uuid != self._ndi_scan_placeholder_uuid
+            ):
+                self.ui.comboBox_camera_source.removeItem(i)
+            else:
+                i += 1
+
+        if not ndi_sources:
+            QMessageBox.information(
+                self,
+                "NDI",
+                "No NDI sources found on the network.",
+            )
+            self.ui.comboBox_camera_source.blockSignals(True)
+            self.ui.comboBox_camera_source.setCurrentIndex(0)
+            self.ui.comboBox_camera_source.blockSignals(False)
+            return
+
+        insert_pos = 5
+        for src in ndi_sources:
+            self.ui.comboBox_camera_source.insertItem(
+                insert_pos, f"NDI: {src.description}", src
+            )
+            insert_pos += 1
+
+        # Auto-select first discovered NDI source.
+        self.ui.comboBox_camera_source.blockSignals(True)
+        self.ui.comboBox_camera_source.setCurrentIndex(5)
+        self.ui.comboBox_camera_source.blockSignals(False)
+        self.source_name = self.ui.comboBox_camera_source.currentText()
         self.globalSettingsChanged("source_selected", self.source_name)
         self.sourceSelectionSucessful()
 
@@ -1388,10 +1831,10 @@ class MainWindow(QMainWindow):
         if item.column() != 0:
             item = self.ui.tableWidget_boxes.item(item.row(), 0)
         if not self.image_viewer:
-            self._set_auto_tune_status("select source")
+            self._set_auto_tune_status("select_source")
             return
         self.image_viewer.beginBoxPlacement(item.text())
-        self._set_auto_tune_status(f"draw {item.text()}")
+        self._set_auto_tune_status("draw", name=item.text())
 
     def boxPlacementFinished(self, item_name, rect):
         items = self.ui.tableWidget_boxes.findItems(item_name, Qt.MatchFlag.MatchExactly)
@@ -1488,19 +1931,24 @@ class MainWindow(QMainWindow):
             "prev_text": "",
         }
         self._auto_tune_apply(item_name, candidates[0])
-        self._set_auto_tune_status(f"tuning {item_name} (1/{len(candidates)})")
+        self._set_auto_tune_status(
+            "tuning",
+            name=item_name,
+            current=1,
+            total=len(candidates),
+        )
         logger.info("Auto-tune started for '%s' (%d candidates)", item_name, len(candidates))
 
     def rerunAutoTuneSelected(self):
         item = self.ui.tableWidget_boxes.currentItem()
         if item is None:
-            self._set_auto_tune_status("select field")
+            self._set_auto_tune_status("select_field")
             return
         if item.column() != 0:
             item = self.ui.tableWidget_boxes.item(item.row(), 0)
         item_name = item.text()
         if self.detectionTargetsStorage.find_item_by_name(item_name) is None:
-            self._set_auto_tune_status("field not active")
+            self._set_auto_tune_status("field_not_active")
             return
         self._auto_tune_start(item_name)
 
@@ -1547,7 +1995,10 @@ class MainWindow(QMainWindow):
             next_item = next(iter(self.auto_tune_states))
             next_state = self.auto_tune_states[next_item]
             self._set_auto_tune_status(
-                f"tuning {next_item} ({next_state['current_idx'] + 1}/{len(next_state['candidates'])})"
+                "tuning",
+                name=next_item,
+                current=next_state["current_idx"] + 1,
+                total=len(next_state["candidates"]),
             )
         else:
             self._set_auto_tune_status("done")
@@ -1578,16 +2029,47 @@ class MainWindow(QMainWindow):
             state["prev_text"] = ""
             self._auto_tune_apply(item_name, state["candidates"][next_idx])
             self._set_auto_tune_status(
-                f"tuning {item_name} ({next_idx + 1}/{len(state['candidates'])})"
+                "tuning",
+                name=item_name,
+                current=next_idx + 1,
+                total=len(state["candidates"]),
             )
 
         for item_name in done_items:
             self._auto_tune_finish(item_name)
 
-    def _set_auto_tune_status(self, status: str):
+    def _set_auto_tune_status(self, status_key: str, **kwargs):
         if not hasattr(self.ui, "pushButton_autoTuneStatus"):
             return
-        self.ui.pushButton_autoTuneStatus.setText(f"Auto-tune: {status}")
+        if status_key == "idle":
+            status = QCoreApplication.translate("MainWindow", "idle")
+        elif status_key == "select_source":
+            status = QCoreApplication.translate("MainWindow", "select source")
+        elif status_key == "draw":
+            status = QCoreApplication.translate("MainWindow", "draw {name}").format(
+                name=kwargs.get("name", "")
+            )
+        elif status_key == "tuning":
+            status = QCoreApplication.translate(
+                "MainWindow", "tuning {name} ({current}/{total})"
+            ).format(
+                name=kwargs.get("name", ""),
+                current=kwargs.get("current", 0),
+                total=kwargs.get("total", 0),
+            )
+        elif status_key == "done":
+            status = QCoreApplication.translate("MainWindow", "done")
+        elif status_key == "select_field":
+            status = QCoreApplication.translate("MainWindow", "select field")
+        elif status_key == "field_not_active":
+            status = QCoreApplication.translate("MainWindow", "field not active")
+        else:
+            status = status_key
+
+        label = QCoreApplication.translate("MainWindow", "Auto-tune: {status}").format(
+            status=status
+        )
+        self.ui.pushButton_autoTuneStatus.setText(label)
 
     def makeTemplateField(self, toggled: bool):
         item = self.ui.tableWidget_boxes.currentItem()

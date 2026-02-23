@@ -176,15 +176,19 @@ def update_ts_file(ts_path: Path, updates: dict[str, tuple[str, str]], apply: bo
 
     changed = 0
     total = 0
+    seen_keys: set[str] = set()
+    contexts: dict[str, ET.Element] = {}
 
     for ctx in root.findall("context"):
         ctx_name = normalize_text(ctx.findtext("name"))
+        contexts[ctx_name] = ctx
         for msg in ctx.findall("message"):
             source = normalize_text(msg.findtext("source"))
             key = f"{ctx_name}::{source}"
             if key not in updates:
                 continue
 
+            seen_keys.add(key)
             total += 1
             new_text, status = updates[key]
             trans_el = msg.find("translation")
@@ -204,6 +208,31 @@ def update_ts_file(ts_path: Path, updates: dict[str, tuple[str, str]], apply: bo
 
             if old_text != new_text or old_type != trans_el.attrib.get("type", ""):
                 changed += 1
+
+    # Add keys missing from the target TS file (common when source language gained new messages).
+    for key, (new_text, status) in updates.items():
+        if key in seen_keys:
+            continue
+        if "::" not in key:
+            continue
+        ctx_name, source = key.split("::", 1)
+        ctx_el = contexts.get(ctx_name)
+        if ctx_el is None:
+            ctx_el = ET.SubElement(root, "context")
+            name_el = ET.SubElement(ctx_el, "name")
+            name_el.text = ctx_name
+            contexts[ctx_name] = ctx_el
+
+        msg_el = ET.SubElement(ctx_el, "message")
+        source_el = ET.SubElement(msg_el, "source")
+        source_el.text = source
+        trans_el = ET.SubElement(msg_el, "translation")
+        trans_el.text = new_text
+        is_unfinished = (status == "unfinished") or (new_text == "")
+        if is_unfinished:
+            trans_el.attrib["type"] = "unfinished"
+        changed += 1
+        total += 1
 
     if apply and changed > 0:
         tree.write(ts_path, encoding="utf-8", xml_declaration=True)

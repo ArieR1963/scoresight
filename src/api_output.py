@@ -14,6 +14,7 @@ from storage import fetch_data, subscribe_to_data
 out_api_url = fetch_data("scoresight.json", "out_api_url", None)
 out_api_encoding = fetch_data("scoresight.json", "out_api_encoding", "JSON (Full)")
 out_api_method = fetch_data("scoresight.json", "out_api_method", "POST")
+REQUEST_TIMEOUT_SECONDS = 1.5
 
 
 def is_valid_url_urllib(url):
@@ -83,7 +84,7 @@ def update_out_api(data: list[TextDetectionTargetWithResult]):
         except Exception as e:
             logger.error(f"Error sending data to output API: {out_api_url}, {e}")
 
-    thread = threading.Thread(target=send_data)
+    thread = threading.Thread(target=send_data, daemon=True)
     thread.start()
 
 
@@ -97,7 +98,7 @@ def send_get(data: list[TextDetectionTargetWithResult]):
         out_api_url_copy += "?"
     out_api_url_copy += urlencode({result.name: result.result for result in data})
     logger.debug(f"GET URL: {out_api_url_copy}")
-    response = requests.get(out_api_url_copy)
+    response = requests.get(out_api_url_copy, timeout=REQUEST_TIMEOUT_SECONDS)
     return response
 
 
@@ -112,12 +113,14 @@ def send_json(data: list[TextDetectionTargetWithResult], encoding: str):
             out_api_url,
             headers=headers,
             data=json_data_dump,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
     elif out_api_method == "PUT":
         response = requests.put(
             out_api_url,
             headers=headers,
             data=json_data_dump,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
     else:
         logger.error(f"Invalid method: {out_api_method}")
@@ -139,9 +142,13 @@ def send_xml(data: list[TextDetectionTargetWithResult]):
         resultEl.set("height", str(targetWithResult.height()))
     xml_data = ET.tostring(root, encoding="utf-8")
     if out_api_method == "POST":
-        response = requests.post(out_api_url, headers=headers, data=xml_data)
+        response = requests.post(
+            out_api_url, headers=headers, data=xml_data, timeout=REQUEST_TIMEOUT_SECONDS
+        )
     elif out_api_method == "PUT":
-        response = requests.put(out_api_url, headers=headers, data=xml_data)
+        response = requests.put(
+            out_api_url, headers=headers, data=xml_data, timeout=REQUEST_TIMEOUT_SECONDS
+        )
     else:
         logger.error(f"Invalid method: {out_api_method}")
         return None
@@ -166,9 +173,19 @@ def send_csv(data: list[TextDetectionTargetWithResult]):
             ]
         )
     if out_api_method == "POST":
-        response = requests.post(out_api_url, headers=headers, data=output.getvalue())
+        response = requests.post(
+            out_api_url,
+            headers=headers,
+            data=output.getvalue(),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
     elif out_api_method == "PUT":
-        response = requests.put(out_api_url, headers=headers, data=output.getvalue())
+        response = requests.put(
+            out_api_url,
+            headers=headers,
+            data=output.getvalue(),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
     else:
         logger.error(f"Invalid method: {out_api_method}")
         return None

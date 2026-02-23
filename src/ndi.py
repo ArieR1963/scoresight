@@ -36,29 +36,37 @@ def ReceiveFrameTypeToString(frame_type: ReceiveFrameType) -> str:
 
 
 class NDICapture(BaseVideoCapture):
-    finder = Finder()
+    finder = None
+
+    @staticmethod
+    def _get_finder():
+        if NDICapture.finder is None:
+            NDICapture.finder = Finder()
+        return NDICapture.finder
 
     def get_camera_info_ndi():
         # Get the NDI cameras
         logger.info("Getting NDI sources...")
         sources = []
+        finder = NDICapture._get_finder()
         # Create a Finder to find NDI sources
-        if NDICapture.finder.wait_for_sources(1.0):
+        if finder.wait_for_sources(1.0):
             # create the camera info objects
             sources = [
                 CameraInfo(name, name, i, CameraInfo.CameraType.NDI)
-                for i, name in enumerate(NDICapture.finder.get_source_names())
+                for i, name in enumerate(finder.get_source_names())
             ]
         logger.info(f"Found {len(sources)} NDI sources")
 
         return sources
 
     def __init__(self, id: str):
+        finder = NDICapture._get_finder()
         self.receiver = Receiver(
             color_format=RecvColorFormat.BGRX_BGRA,
             bandwidth=RecvBandwidth.highest,
         )
-        self.source = NDICapture.finder.get_source(id)
+        self.source = finder.get_source(id)
         self.receiver.set_source(self.source)
         self.video_frame = VideoRecvFrame()
         self.metadata_frame = MetadataRecvFrame()

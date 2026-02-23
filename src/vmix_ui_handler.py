@@ -1,5 +1,5 @@
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -67,6 +67,9 @@ class VMixUIHanlder:
     def globalSettingsChanged(self, settingName, value):
         store_data("scoresight.json", settingName, value)
 
+    def _tr(self, text: str) -> str:
+        return QCoreApplication.translate("MainWindow", text)
+
     # -------- Legacy vMix --------
     def vmixConnectionChanged(self):
         previous_mapping = {}
@@ -119,20 +122,20 @@ class VMixUIHanlder:
         if not hasattr(self, "label_vmixLegacyStatus"):
             return
         if enabled:
-            self.label_vmixLegacyStatus.setText("● Running")
+            self.label_vmixLegacyStatus.setText(self._tr("● Running"))
             self.label_vmixLegacyStatus.setStyleSheet("color:#6bd67a;")
-            self.ui.pushButton_startvmix.setText("■ Stop")
+            self.ui.pushButton_startvmix.setText(self._tr("■ Stop"))
         else:
-            self.label_vmixLegacyStatus.setText("● Off")
+            self.label_vmixLegacyStatus.setText(self._tr("● Off"))
             self.label_vmixLegacyStatus.setStyleSheet("color:#8a8a8a;")
-            self.ui.pushButton_startvmix.setText("▶ Start")
+            self.ui.pushButton_startvmix.setText(self._tr("▶ Start"))
 
     def _setLegacyVmixDisconnected(self):
         if not hasattr(self, "label_vmixLegacyStatus"):
             return
-        self.label_vmixLegacyStatus.setText("● Disconnected")
+        self.label_vmixLegacyStatus.setText(self._tr("● Disconnected"))
         self.label_vmixLegacyStatus.setStyleSheet("color:#e05858;")
-        self.ui.pushButton_startvmix.setText("▶ Start")
+        self.ui.pushButton_startvmix.setText(self._tr("▶ Start"))
 
     # -------- vMix API+ --------
     def _createVmixApiPlusTab(self):
@@ -159,7 +162,7 @@ class VMixUIHanlder:
         h1 = QHBoxLayout(row1)
         h1.setContentsMargins(0, 0, 0, 0)
         h1.setSpacing(3)
-        h1.addWidget(QLabel("Connection", row1))
+        h1.addWidget(QLabel(self._tr("Connection"), row1))
         self.lineEdit_vmixApiPlusHost = QLineEdit(row1)
         self.lineEdit_vmixApiPlusHost.setText(
             fetch_data("scoresight.json", "vmix_api_plus_host", "localhost")
@@ -172,12 +175,12 @@ class VMixUIHanlder:
             fetch_data("scoresight.json", "vmix_api_plus_port", "8088")
         )
         h1.addWidget(self.lineEdit_vmixApiPlusPort)
-        self.pushButton_fetchVmixApiPlusFields = QPushButton("Fetch Fields", row1)
+        self.pushButton_fetchVmixApiPlusFields = QPushButton(self._tr("Fetch Fields"), row1)
         h1.addWidget(self.pushButton_fetchVmixApiPlusFields)
-        self.pushButton_startvmixApiPlus = QPushButton("▶ Start", row1)
+        self.pushButton_startvmixApiPlus = QPushButton(self._tr("▶ Start"), row1)
         self.pushButton_startvmixApiPlus.setCheckable(True)
         h1.addWidget(self.pushButton_startvmixApiPlus)
-        self.label_vmixApiPlusStatus = QLabel("● Off", row1)
+        self.label_vmixApiPlusStatus = QLabel(self._tr("● Off"), row1)
         self.label_vmixApiPlusStatus.setStyleSheet("color:#8a8a8a;")
         h1.addWidget(self.label_vmixApiPlusStatus)
         vbox.addWidget(row1)
@@ -188,10 +191,10 @@ class VMixUIHanlder:
         vmix_index = self.ui.tabWidget_outputs.indexOf(self.ui.tab_vmix)
         if vmix_index >= 0:
             self.ui.tabWidget_outputs.insertTab(
-                vmix_index + 1, self.tab_vmix_api_plus, "vMix API+"
+                vmix_index + 1, self.tab_vmix_api_plus, self._tr("vMix API+")
             )
         else:
-            self.ui.tabWidget_outputs.addTab(self.tab_vmix_api_plus, "vMix API+")
+            self.ui.tabWidget_outputs.addTab(self.tab_vmix_api_plus, self._tr("vMix API+"))
 
     def vmixApiPlusConnectionChanged(self):
         previous_mapping = {}
@@ -225,13 +228,13 @@ class VMixUIHanlder:
     def _setApiPlusLed(self, enabled: bool):
         self.vmixApiPlusEnabled = enabled
         if enabled:
-            self.label_vmixApiPlusStatus.setText("● Running")
+            self.label_vmixApiPlusStatus.setText(self._tr("● Running"))
             self.label_vmixApiPlusStatus.setStyleSheet("color:#6bd67a;")
-            self.pushButton_startvmixApiPlus.setText("■ Stop")
+            self.pushButton_startvmixApiPlus.setText(self._tr("■ Stop"))
         else:
-            self.label_vmixApiPlusStatus.setText("● Off")
+            self.label_vmixApiPlusStatus.setText(self._tr("● Off"))
             self.label_vmixApiPlusStatus.setStyleSheet("color:#8a8a8a;")
-            self.pushButton_startvmixApiPlus.setText("▶ Start")
+            self.pushButton_startvmixApiPlus.setText(self._tr("▶ Start"))
 
     def togglevMixApiPlus(self, value: bool):
         self.globalSettingsChanged("vmix_api_plus_enabled", value)
@@ -258,9 +261,9 @@ class VMixUIHanlder:
 
     def _setApiPlusDisconnected(self):
         self.vmixApiPlusEnabled = False
-        self.label_vmixApiPlusStatus.setText("● Disconnected")
+        self.label_vmixApiPlusStatus.setText(self._tr("● Disconnected"))
         self.label_vmixApiPlusStatus.setStyleSheet("color:#e05858;")
-        self.pushButton_startvmixApiPlus.setText("▶ Start")
+        self.pushButton_startvmixApiPlus.setText(self._tr("▶ Start"))
 
     def fetchVmixApiPlusFields(self):
         self._refreshVmixApiPlusFields(show_popup=True)
@@ -273,8 +276,8 @@ class VMixUIHanlder:
             if show_popup:
                 QMessageBox.warning(
                     self.tab_vmix_api_plus,
-                    "vMix API+",
-                    "No text fields found. Check host/port and try again.",
+                    self._tr("vMix API+"),
+                    self._tr("No text fields found. Check host/port and try again."),
                 )
             return
         self.vmixApiPlusFieldNames = fields
@@ -285,11 +288,13 @@ class VMixUIHanlder:
 
     def _showVmixApiPlusFieldsPopup(self, fields: list[str]):
         dialog = QDialog(self.tab_vmix_api_plus)
-        dialog.setWindowTitle("vMix API+ Fields")
+        dialog.setWindowTitle(self._tr("vMix API+ Fields"))
         dialog.setMinimumWidth(460)
         layout = QVBoxLayout(dialog)
         label = QLabel(
-            f"Found {len(fields)} field names from /api (<text name=\"...\">).",
+            self._tr('Found {n} field names from /api (<text name="...">).').replace(
+                "{n}", str(len(fields))
+            ),
             dialog,
         )
         layout.addWidget(label)
@@ -323,7 +328,7 @@ class VMixUIHanlder:
         self.ui.lineEdit_vmixPort.textChanged.connect(self.vmixConnectionChanged)
         self.ui.inputLineEdit_vmix.textChanged.connect(self.vmixConnectionChanged)
         self.vmixConnectionChanged()
-        self.label_vmixLegacyStatus = QLabel("● Off", self.ui.connectionWidget)
+        self.label_vmixLegacyStatus = QLabel(self._tr("● Off"), self.ui.connectionWidget)
         self.label_vmixLegacyStatus.setStyleSheet("color:#8a8a8a;")
         self.ui.horizontalLayout_18.addWidget(self.label_vmixLegacyStatus)
         self.ui.tableView_vmixMapping.setModel(QStandardItemModel())

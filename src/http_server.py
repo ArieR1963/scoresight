@@ -25,11 +25,14 @@ load_dotenv(resource_path(".env"))
 PORT = 18099
 http_results = []
 loop: asyncio.AbstractEventLoop | None = None
+server: uvicorn.Server | None = None
+server_thread: threading.Thread | None = None
 
 
 def lifespan(app: FastAPI):
     logger = logging.getLogger("uvicorn.access")
-    logger.addHandler(file_handler)
+    if file_handler is not None:
+        logger.addHandler(file_handler)
     yield
 
 
@@ -203,7 +206,10 @@ def is_port_in_use(port: int) -> bool:
 
 
 def start_http_server():
+    global server_thread
+
     def run_uvicorn():
+        global loop, server
         if is_port_in_use(PORT):
             logger.error(f"Port {PORT} is already in use")
             return
@@ -226,11 +232,16 @@ def start_http_server():
             loop.run_until_complete(server.serve())
         except Exception as e:
             logger.error(f"Error running server: {e}")
-        loop.close()
+        try:
+            loop.close()
+        except Exception:
+            pass
+        loop = None
+        server = None
         logger.info("Server thread stopped")
 
     # Start Uvicorn server in a separate thread
-    server_thread = threading.Thread(target=run_uvicorn)
+    server_thread = threading.Thread(target=run_uvicorn, daemon=True)
     server_thread.start()
 
 
@@ -241,13 +252,21 @@ async def shutdown():
 
 
 def stop_http_server():
+    global server, loop, server_thread
     logger.info("Stopping server...")
     try:
-        conn = http.client.HTTPConnection("localhost", PORT)
+        if server is not None:
+            server.should_exit = True
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(lambda: None)
+        # Fallback for older behavior
+        conn = http.client.HTTPConnection("localhost", PORT, timeout=1.0)
         conn.request("GET", "/shutdown")
         conn.close()
-    except Exception as e:
+    except Exception:
         pass
+    if server_thread is not None and server_thread.is_alive():
+        server_thread.join(timeout=1.5)
 
 
 def update_http_server(results: list[TextDetectionTargetWithResult]):

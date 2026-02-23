@@ -1,6 +1,6 @@
 import platform
+import os
 from camera_info import CameraInfo
-from ndi import NDICapture
 from sc_logging import logger
 
 # This file contains the code to get the camera information for the current OS
@@ -69,7 +69,16 @@ def get_camera_info() -> list[CameraInfo]:
     elif os_name == "Linux":
         cameras += get_camera_info_linux()
 
-    # Add NDI cameras
-    cameras += NDICapture.get_camera_info_ndi()
+    # Add NDI cameras only when explicitly enabled. On some macOS systems this
+    # can trigger firewall prompts (UDP discovery) during startup.
+    if os.getenv("SCORESIGHT_ENABLE_NDI_DISCOVERY", "0") == "1":
+        try:
+            from ndi import NDICapture
+
+            cameras += NDICapture.get_camera_info_ndi()
+        except Exception as e:
+            logger.warning(f"Skipping NDI source discovery: {e}")
+    else:
+        logger.info("NDI source discovery disabled (set SCORESIGHT_ENABLE_NDI_DISCOVERY=1 to enable)")
 
     return cameras

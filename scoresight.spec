@@ -102,14 +102,16 @@ if args.mac_osx:
     sources += ['src/screen_capture_source_mac.py']
 
 numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
+cyndilib_datas, cyndilib_binaries, cyndilib_hiddenimports = collect_all('cyndilib')
+cysignals_datas, cysignals_binaries, cysignals_hiddenimports = collect_all('cysignals')
 ws_hiddenimports=['websockets', 'websockets.legacy']
 
 a = Analysis(
     sources,
     pathex=[],
-    binaries=numpy_binaries,
-    datas=datas + numpy_datas,
-    hiddenimports=numpy_hiddenimports + ws_hiddenimports,
+    binaries=numpy_binaries + cyndilib_binaries + cysignals_binaries,
+    datas=datas + numpy_datas + cyndilib_datas + cysignals_datas,
+    hiddenimports=numpy_hiddenimports + cyndilib_hiddenimports + cysignals_hiddenimports + ws_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -156,23 +158,32 @@ if args.win:
 elif args.mac_osx:
     exe = EXE(
         pyz,
-        a.binaries,
-        a.datas,
         a.scripts,
         name='scoresight',
         debug=args.debug is not None and args.debug,
+        exclude_binaries=True,
         bootloader_ignore_signals=False,
         strip=False,
         upx=True,
-        console=False,
+        console=args.debug is not None and args.debug,
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,
         codesign_identity=os.environ.get('APPLE_APP_DEVELOPER_ID', ''),
         entitlements_file='./entitlements.plist',
     )
-    app = BUNDLE(
+    coll = COLLECT(
         exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='scoresight'
+    )
+    app = BUNDLE(
+        coll,
         name='scoresight.app',
         icon='icons/MacOS_icon.png',
         bundle_identifier='com.royshilkrot.scoresight',

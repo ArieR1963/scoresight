@@ -29,7 +29,7 @@ def _configure_qt_plugin_paths() -> None:
 if __name__ == "__main__":
     _configure_qt_plugin_paths()
 
-    from PySide6.QtCore import QLocale, QTranslator
+    from PySide6.QtCore import QLocale, QTranslator, QTimer
     from PySide6.QtWidgets import QApplication
     from mainwindow import MainWindow
 
@@ -59,7 +59,23 @@ if __name__ == "__main__":
 
     # show the main window
     mainWindow = MainWindow(translator, app)
+    # Force the main window to the foreground. Some macOS setups may start
+    # the process without presenting the window on first show().
     mainWindow.show()
+    mainWindow.showNormal()
+    mainWindow.raise_()
+    mainWindow.activateWindow()
+
+    def _ensure_visible() -> None:
+        try:
+            mainWindow.showNormal()
+            mainWindow.raise_()
+            mainWindow.activateWindow()
+        except Exception:
+            pass
+
+    QTimer.singleShot(250, _ensure_visible)
+    QTimer.singleShot(1000, _ensure_visible)
 
     app.exec()
     logger.info("Exiting...")

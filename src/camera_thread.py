@@ -8,7 +8,6 @@ import threading
 
 from base_video_capture import BaseVideoCapture
 from camera_info import CameraInfo
-from ndi import NDICapture
 from screen_capture_source import ScreenCapture, ScreenCaptureType
 from storage import TextDetectionTargetMemoryStorage, subscribe_to_data, fetch_data
 from tesseract import TextDetector
@@ -243,6 +242,9 @@ class TimerThread(QThread):
 
     def connect_video_capture(self) -> bool:
         if self.camera_info.type == CameraInfo.CameraType.NDI:
+            # Lazy import to avoid NDI/firewall side effects during normal startup.
+            from ndi import NDICapture
+
             self.video_capture = NDICapture(self.camera_info.uuid)
         elif self.camera_info.type == CameraInfo.CameraType.SCREEN_CAPTURE:
             self.video_capture = ScreenCapture(self.camera_info.id)

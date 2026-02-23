@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QImage, QPixmap, QPainter
 from PySide6.QtCore import Signal
 
@@ -118,7 +118,20 @@ class CameraView(QGraphicsView):
             self.first_frame_received_signal.emit()
 
         # update the fps text
-        fps_text = f"Frames/s: {self.timerThread.fps:.2f}\nUpdates/s: {self.timerThread.ups:.2f}\nPreviews/s: {self.timerThread.pps:.2f}\nResolution: {int(self.camera_width)}x{int(self.camera_height)}"
+        frames_per_second_label = QCoreApplication.translate("MainWindow", "Frames/s")
+        updates_per_second_label = QCoreApplication.translate(
+            "MainWindow", "Updates/s"
+        )
+        previews_per_second_label = QCoreApplication.translate(
+            "MainWindow", "Previews/s"
+        )
+        resolution_label = QCoreApplication.translate("MainWindow", "Resolution")
+        fps_text = (
+            f"{frames_per_second_label}: {self.timerThread.fps:.2f}\n"
+            f"{updates_per_second_label}: {self.timerThread.ups:.2f}\n"
+            f"{previews_per_second_label}: {self.timerThread.pps:.2f}\n"
+            f"{resolution_label}: {int(self.camera_width)}x{int(self.camera_height)}"
+        )
         if self.fps_text is None:
             self.fps_text = self.scene.addText(fps_text)
             self.fps_text.setPos(0, 0)

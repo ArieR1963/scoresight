@@ -157,6 +157,24 @@ To build the executable run PyInstaller.
 pyinstaller --clean --noconfirm scoresight.spec -- --mac_osx
 ```
 
+Output:
+
+- `dist/scoresight.app` (macOS `.app` bundle, onedir)
+
+Notes:
+
+- On macOS we use an **onedir app bundle** for much faster startup during local testing.
+- For local testing, copy the app directly to `/Applications`:
+
+```bash
+rm -rf /Applications/scoresight.app
+cp -R dist/scoresight.app /Applications/
+xattr -dr com.apple.quarantine /Applications/scoresight.app
+open /Applications/scoresight.app
+```
+
+- Creating a `.dmg` is optional for local testing and mainly intended for distribution.
+
 #### Windows
 
 ```
@@ -169,6 +187,8 @@ pyinstaller --clean --noconfirm scoresight.spec -- --win
 pyinstaller --clean --noconfirm scoresight.spec
 ```
 
+For automated cross-platform GitHub Releases (macOS/Windows/Linux), see:
+`docs/RELEASE.md`
 
 ## Contributing
 
